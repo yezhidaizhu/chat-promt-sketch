@@ -10,6 +10,7 @@ const emit = defineEmits(["close"]);
 const popover = ref(null);
 const isPositioned = ref(false);
 let frame;
+let contentObserver;
 
 function position() {
   cancelAnimationFrame(frame);
@@ -67,12 +68,16 @@ watch(() => props.open, async (open) => {
   if (open) {
     await nextTick();
     position();
+    contentObserver = new ResizeObserver(position);
+    contentObserver.observe(popover.value);
     document.addEventListener("pointerdown", onPointerDown, true);
     document.addEventListener("keydown", onKeydown);
     window.addEventListener("resize", position);
     window.addEventListener("scroll", position, true);
   } else {
     isPositioned.value = false;
+    contentObserver?.disconnect();
+    contentObserver = null;
     document.removeEventListener("pointerdown", onPointerDown, true);
     document.removeEventListener("keydown", onKeydown);
     window.removeEventListener("resize", position);
@@ -88,6 +93,7 @@ watch(() => props.anchor, async () => {
 
 onBeforeUnmount(() => {
   cancelAnimationFrame(frame);
+  contentObserver?.disconnect();
   document.removeEventListener("pointerdown", onPointerDown, true);
   document.removeEventListener("keydown", onKeydown);
   window.removeEventListener("resize", position);
@@ -108,6 +114,8 @@ onBeforeUnmount(() => {
   top: 0;
   left: 0;
   padding: 10px;
+  opacity: 0;
+  scale: 0.96;
   border: 1px solid var(--sketch-color-border);
   border-radius: 20px;
   background: var(--sketch-color-surface-raised);
@@ -115,6 +123,9 @@ onBeforeUnmount(() => {
 }
 
 .sketch-popover.is-positioned {
-  transition: transform var(--sketch-transition-expand);
+  opacity: 1;
+  scale: 1;
+  transition: transform var(--sketch-transition-expand), opacity var(--sketch-transition-expand), scale var(--sketch-transition-expand);
 }
+
 </style>

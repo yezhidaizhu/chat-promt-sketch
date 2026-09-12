@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from "vue";
+import { computed, onBeforeUnmount } from "vue";
 import { Check } from "@lucide/vue";
 
 const props = defineProps({
@@ -12,6 +12,26 @@ const props = defineProps({
 });
 
 const emit = defineEmits(["update:modelValue", "finish"]);
+let colorFrame = 0;
+let pendingColor = "";
+
+function queueCustomColor(event) {
+  pendingColor = event.target.value;
+  if (colorFrame) return;
+  colorFrame = requestAnimationFrame(() => {
+    emit("update:modelValue", pendingColor);
+    colorFrame = 0;
+  });
+}
+
+function flushCustomColor(event) {
+  if (colorFrame) cancelAnimationFrame(colorFrame);
+  colorFrame = 0;
+  pendingColor = event.target.value;
+  emit("update:modelValue", pendingColor);
+}
+
+onBeforeUnmount(() => cancelAnimationFrame(colorFrame));
 
 const colors = [
   { name: "白色", value: "#ffffff" },
@@ -42,7 +62,7 @@ const isCustom = computed(() => !colors.some((color) => color.value === props.mo
         title="选择自定义颜色"
         aria-label="选择自定义颜色"
       >
-        <input :value="modelValue" type="color" @change="emit('update:modelValue', $event.target.value)" />
+        <input :value="modelValue" type="color" @input="queueCustomColor" @change="flushCustomColor" />
       </label>
       <button
         v-for="color in colors"

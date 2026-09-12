@@ -6,6 +6,7 @@ import StrokeSizeControl from "./StrokeSizeControl.vue";
 import PopoverHost from "./PopoverHost.vue";
 import ShapeMenu from "./ShapeMenu.vue";
 import RatioMenu from "./RatioMenu.vue";
+import ClearConfirm from "./ClearConfirm.vue";
 import SketchTextEditor from "./SketchTextEditor.vue";
 import { useHistory } from "../../composables/useHistory.js";
 import { useSketchState } from "../../composables/useSketchState.js";
@@ -302,13 +303,20 @@ const { onPointerDown, onCanvasDoubleClick, onPointerMove, finishPointer, onCanv
   beginTextEdit, updatePointerCursor, getResizeCursor, hitSelectionFrame,
 });
 
-function clearCanvas() {
+function confirmClearCanvas() {
   if (!hasContent.value) return;
   const previous = clone();
   commands.value = [];
   selectedIndex.value = -1;
+  selectionCursor.value = "default";
+  activePopover.value = null;
   pushHistory(previous);
   announce("画布已清空");
+}
+
+function requestClearCanvas(anchor) {
+  activePopover.value = activePopover.value === "clear" ? null : "clear";
+  popoverAnchor.value = anchor;
 }
 
 function downloadCanvas() {
@@ -464,7 +472,7 @@ onBeforeUnmount(() => {
           @select-shape="selectShape"
           @undo="undo"
           @redo="redo"
-          @clear="clearCanvas"
+          @clear="requestClearCanvas"
           @toggle-controls="toggleControlsOutside"
           @toggle-ratio="toggleRatioMenu"
           @select-ratio="selectCanvasRatio"
@@ -473,6 +481,7 @@ onBeforeUnmount(() => {
         <PopoverHost :open="Boolean(activePopover)" :anchor="popoverAnchor" @close="activePopover = null">
           <ShapeMenu v-if="activePopover === 'shape'" :active-shape="activeShape" @select="selectShape" />
           <RatioMenu v-else-if="activePopover === 'ratio'" :current="canvasRatio" @select="selectCanvasRatio" />
+          <ClearConfirm v-else-if="activePopover === 'clear'" @confirm="confirmClearCanvas" @cancel="activePopover = null" />
         </PopoverHost>
 
         <div class="sketch-body">

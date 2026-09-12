@@ -111,7 +111,7 @@ const tools = [
       <button class="icon-button" type="button" title="重做 (Command/Ctrl+Shift+Z)" aria-label="重做" :disabled="!canRedo" @click="emit('redo')">
         <Redo2 :size="20" aria-hidden="true" />
       </button>
-      <button class="icon-button" type="button" title="清空画布" aria-label="清空画布" :disabled="!hasContent" @click="emit('clear')">
+      <button class="icon-button" type="button" title="清空画布" aria-label="清空画布" aria-haspopup="menu" :disabled="!hasContent" @click="emit('clear', $event.currentTarget)">
         <Trash2 :size="19" aria-hidden="true" />
       </button>
     </div>
@@ -152,8 +152,16 @@ const tools = [
   padding: var(--sketch-space-1);
   border: 1px solid var(--sketch-color-border);
   border-radius: var(--sketch-radius-pill);
-  background: var(--sketch-color-control);
+  background: rgba(27, 27, 27, 0.62);
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
+  backdrop-filter: blur(12px) saturate(120%);
   /* box-shadow: var(--sketch-shadow-popover); */
+}
+
+.editor-header.is-outside .tool-group {
+  background: var(--sketch-color-control);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 .action-group {
