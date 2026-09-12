@@ -42,7 +42,7 @@ let textTransform = null;
 let resizeObserver;
 
 const textEditorPadding = 6;
-const textEditorMinWidth = 96;
+const textEditorMinWidth = 48;
 const textEditorDefaultWidth = 240;
 const textLineHeight = 1.25;
 const textMinSize = 12;
@@ -212,23 +212,39 @@ function drawShape(context, command) {
     context.lineTo(left, centerY);
     context.closePath();
   } else if (command.shape === "star") {
-    const radiusX = (right - left) / 2;
-    const radiusY = (bottom - top) / 2;
-    for (let index = 0; index < 10; index += 1) {
+    const points = Array.from({ length: 10 }, (_, index) => {
       const radiusScale = index % 2 === 0 ? 1 : 0.42;
       const angle = -Math.PI / 2 + (index * Math.PI) / 5;
-      const x = centerX + Math.cos(angle) * radiusX * radiusScale;
-      const y = centerY + Math.sin(angle) * radiusY * radiusScale;
+      return { x: Math.cos(angle) * radiusScale, y: Math.sin(angle) * radiusScale };
+    });
+    const minX = Math.min(...points.map((point) => point.x));
+    const maxX = Math.max(...points.map((point) => point.x));
+    const minY = Math.min(...points.map((point) => point.y));
+    const maxY = Math.max(...points.map((point) => point.y));
+    points.forEach((point, index) => {
+      const x = left + ((point.x - minX) / (maxX - minX)) * (right - left);
+      const y = top + ((point.y - minY) / (maxY - minY)) * (bottom - top);
       if (index === 0) context.moveTo(x, y);
       else context.lineTo(x, y);
-    }
+    });
     context.closePath();
   } else if (command.shape === "heart") {
     const shapeWidth = right - left;
     const shapeHeight = bottom - top;
-    context.moveTo(centerX, bottom);
-    context.bezierCurveTo(left, top + shapeHeight * 0.58, left, top, centerX, top + shapeHeight * 0.28);
-    context.bezierCurveTo(right, top, right, top + shapeHeight * 0.58, centerX, bottom);
+    context.moveTo(centerX, top + shapeHeight * 0.28);
+    context.bezierCurveTo(
+      centerX,
+      top + shapeHeight * 0.12,
+      left + shapeWidth * 0.43,
+      top,
+      left + shapeWidth * 0.27,
+      top,
+    );
+    context.bezierCurveTo(left + shapeWidth * 0.12, top, left, top + shapeHeight * 0.12, left, top + shapeHeight * 0.3);
+    context.bezierCurveTo(left, top + shapeHeight * 0.5, left + shapeWidth * 0.08, top + shapeHeight * 0.72, centerX, bottom);
+    context.bezierCurveTo(right - shapeWidth * 0.08, top + shapeHeight * 0.72, right, top + shapeHeight * 0.5, right, top + shapeHeight * 0.3);
+    context.bezierCurveTo(right, top + shapeHeight * 0.12, right - shapeWidth * 0.12, top, right - shapeWidth * 0.27, top);
+    context.bezierCurveTo(right - shapeWidth * 0.43, top, centerX, top + shapeHeight * 0.12, centerX, top + shapeHeight * 0.28);
     context.closePath();
   } else {
     context.rect(start.x, start.y, width, height);
@@ -566,35 +582,83 @@ function translateCommand(command, dx, dy) {
   }
 }
 
-function resizeTextCommand(command, point, state) {
-  const handle = state.handle;
-  const originalBounds = state.originalBounds;
-  const targetBounds = resizeBounds(originalBounds, handle.id, point);
-  const padding = state.draft ? textEditorPadding : 0;
-  const horizontal = /[ew]/.test(handle.id);
-  const vertical = /[ns]/.test(handle.id);
+function textScaleGeometry(bounds, handleId) {
+  const left = bounds.x;
+  const right = bounds.x + bounds.width;
+  const top = bounds.y;
+  const bottom = bounds.y + bounds.height;
+  const centerX = (left + right) / 2;
+  const handles = {
+    nw: { handle: { x: left, y: top }, anchor: { x: right, y: bottom } },
+    n: { handle: { x: centerX, y: top }, anchor: { x: centerX, y: bottom } },
+    ne: { handle: { x: right, y: top }, anchor: { x: left, y: bottom } },
+    se: { handle: { x: right, y: bottom }, anchor: { x: left, y: top } },
+    s: { handle: { x: centerX, y: bottom }, anchor: { x: centerX, y: top } },
+    sw: { handle: { x: left, y: bottom }, anchor: { x: right, y: top } },
+  };
+  return handles[handleId];
+}
 
-  if (horizontal) {
-    const contentWidth = Math.max(textEditorMinWidth, Math.abs(targetBounds.width) - padding * 2);
+function resizeTextCommand(command, point, state) {
+  const handleId = state.handle.id;
+  const originalBounds = state.originalBounds;
+  const padding = state.draft ? textEditorPadding : 0;
+  const widthOnly = ["e", "w"].includes(handleId);
+
+  if (widthOnly) {
+    const contentWidth = Math.max(
+      textEditorMinWidth,
+      handleId === "w"
+        ? originalBounds.x + originalBounds.width - point.x - padding * 2
+        : point.x - originalBounds.x - padding * 2,
+    );
     command.width = contentWidth / stageSize.width;
-    const x = handle.id.includes("w")
+    const x = handleId === "w"
       ? originalBounds.x + originalBounds.width - contentWidth - padding
       : originalBounds.x + padding;
     command.x = x / stageSize.width;
-  }
-
-  if (vertical) {
-    const originalHeight = Math.max(originalBounds.height - padding * 2, 1);
-    const targetHeight = Math.max(command.size * textLineHeight, Math.abs(targetBounds.height) - padding * 2);
-    command.size = Math.round(Math.min(textMaxSize, Math.max(textMinSize, state.originalCommand.size * targetHeight / originalHeight)));
-  }
-
-  if (handle.id.includes("n")) {
-    const height = textLayout(command, command.text).height;
-    command.y = (originalBounds.y + originalBounds.height - height - padding) / stageSize.height;
-  } else {
     command.y = (originalBounds.y + padding) / stageSize.height;
+    return;
   }
+
+  const geometry = textScaleGeometry(originalBounds, handleId);
+  if (!geometry) return;
+  const originalVector = {
+    x: geometry.handle.x - geometry.anchor.x,
+    y: geometry.handle.y - geometry.anchor.y,
+  };
+  const pointerVector = {
+    x: point.x - geometry.anchor.x,
+    y: point.y - geometry.anchor.y,
+  };
+  const rawScale = (
+    pointerVector.x * originalVector.x + pointerVector.y * originalVector.y
+  ) / (originalVector.x ** 2 + originalVector.y ** 2);
+  const originalContentWidth = Math.max(textEditorMinWidth, originalBounds.width - padding * 2);
+  const minScale = Math.max(
+    textMinSize / state.originalCommand.size,
+    textEditorMinWidth / originalContentWidth,
+  );
+  const maxScale = textMaxSize / state.originalCommand.size;
+  const scale = Math.min(maxScale, Math.max(minScale, rawScale));
+  command.size = Math.round(state.originalCommand.size * scale * 10) / 10;
+  const appliedScale = command.size / state.originalCommand.size;
+  command.width = (originalContentWidth * appliedScale) / stageSize.width;
+
+  const layout = textLayout(command, state.draft ? textValue.value : command.text);
+  const outerWidth = layout.width + padding * 2;
+  const outerHeight = layout.height + padding * 2;
+  let outerX = geometry.anchor.x;
+  let outerY = geometry.anchor.y;
+  if (handleId.includes("w")) outerX -= outerWidth;
+  else if (!handleId.includes("e")) outerX -= outerWidth / 2;
+  if (handleId.includes("n")) outerY -= outerHeight;
+  command.x = (outerX + padding) / stageSize.width;
+  command.y = (outerY + padding) / stageSize.height;
+}
+
+function textHandleLabel(handleId) {
+  return ["e", "w"].includes(handleId) ? "调整文字框宽度" : "缩放文字";
 }
 
 function resizeCommand(command, point) {
@@ -1173,7 +1237,7 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
               :class="`is-${handle}`"
               type="button"
               tabindex="-1"
-              :aria-label="`缩放文字 ${handle}`"
+              :aria-label="`${textHandleLabel(handle)} ${handle}`"
               @pointerdown.prevent.stop="startTextTransform($event, 'resize', handle)"
               @pointermove.prevent="moveTextTransform"
               @pointerup.prevent="finishTextTransform"
