@@ -1,3 +1,5 @@
+import { closePopover } from "./usePopover.js";
+
 export function useSketchPointer(options) {
   const {
     activeTool, activeShape, strokeColor, strokeSize, activePopover, commands, selectedIndex, selectedCommand, selectionCursor,
@@ -9,7 +11,7 @@ export function useSketchPointer(options) {
 
   function onPointerDown(event) {
     if (event.button !== undefined && event.button !== 0) return;
-    activePopover.value = null;
+    closePopover();
     const point = eventPoint(event);
     updatePointerCursor(point);
     if (activeTool.value === "text") { gesture = { type: "text", point }; return; }

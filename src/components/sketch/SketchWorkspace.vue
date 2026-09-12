@@ -3,10 +3,6 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import ColorPalette from "./ColorPalette.vue";
 import SketchToolbar from "./SketchToolbar.vue";
 import StrokeSizeControl from "./StrokeSizeControl.vue";
-import FloatingPopover from "../FloatingPopover.vue";
-import ShapeMenu from "./ShapeMenu.vue";
-import RatioMenu from "./RatioMenu.vue";
-import ClearConfirm from "./ClearConfirm.vue";
 import SketchTextEditor from "./SketchTextEditor.vue";
 import { useHistory } from "../../composables/useHistory.js";
 import { useSketchState } from "../../composables/useSketchState.js";
@@ -14,6 +10,7 @@ import { useSketchControls } from "../../composables/useSketchControls.js";
 import { useSketchPointer } from "../../composables/useSketchPointer.js";
 import { useSketchSelection } from "../../composables/useSketchSelection.js";
 import { useSketchTextEditor } from "../../composables/useSketchTextEditor.js";
+import { closePopover, openPopover } from "../../composables/usePopover.js";
 import { isSelectionFrameHit as hitSelectionFrame, resizeCursor as getResizeCursor } from "../../utils/hitTest.js";
 import { drawFreehand, drawShape, prepareContext } from "../../utils/sketchDrawing.js";
 
@@ -33,7 +30,7 @@ const liveCanvas = ref(null);
 const textInput = ref(null);
 const {
   activeTool, activeShape, strokeColor, strokeSize, commands, selectedIndex,
-  activePopover, popoverAnchor, controlsOutside, canvasRatio, textEditor,
+  activePopover, controlsOutside, canvasRatio, textEditor,
   textValue, selectionCursor, selectedCommand, hasContent,
 } = useSketchState();
 const pointerCursor = ref({ x: 0, y: 0, visible: false });
@@ -119,7 +116,7 @@ const { undoStack, redoStack, canUndo, canRedo, clone, pushHistory, undo, redo }
 );
 let controls;
 const { textLayout, textEditorBounds, startText, beginTextEdit, commitText, cancelText, resizeTextCommand, startTextTransform, moveTextTransform, finishTextTransform } = useSketchTextEditor({ commands, selectedIndex, activeTool, strokeColor, selectionCursor, textEditor, textValue, clone, pushHistory, announce, render, selectCommand: (...args) => controls.selectCommand(...args), normalizePoint, pixelPoint, eventPoint, getStageSize: () => stageSize, getContext: () => committedContext, input: textInput });
-controls = useSketchControls({ state: { activeTool, activeShape, strokeColor, strokeSize, commands, selectedIndex, activePopover, popoverAnchor, controlsOutside, canvasRatio, textEditor, selectionCursor, selectedCommand }, clone, pushHistory, render, resizeCanvases, announce, commitText });
+controls = useSketchControls({ state: { activeTool, activeShape, strokeColor, strokeSize, commands, selectedIndex, activePopover, controlsOutside, canvasRatio, textEditor, selectionCursor, selectedCommand }, clone, pushHistory, render, resizeCanvases, announce, commitText });
 const { selectTool, toggleShapeMenu, toggleControlsOutside, toggleRatioMenu, selectCanvasRatio, selectShape, selectCommand, setStrokeSize, setStrokeColor } = controls;
 const { commandBounds, geometryBounds, selectionBounds, findResizeHandle, resizeBounds, findCommand, drawSelection } = useSketchSelection({ commands, selectedIndex, pixelPoint, textLayout });
 
@@ -309,14 +306,14 @@ function confirmClearCanvas() {
   commands.value = [];
   selectedIndex.value = -1;
   selectionCursor.value = "default";
-  activePopover.value = null;
+  closePopover();
   pushHistory(previous);
   announce("画布已清空");
 }
 
 function requestClearCanvas(anchor) {
-  activePopover.value = activePopover.value === "clear" ? null : "clear";
-  popoverAnchor.value = anchor;
+  if (activePopover.value === "clear") closePopover();
+  else openPopover("clear", anchor, { confirm: confirmClearCanvas, cancel: closePopover });
 }
 
 function downloadCanvas() {
@@ -343,13 +340,7 @@ function finishSketch() {
 }
 
 function closeDialog() {
-  if (dialog.value?.open) dialog.value.close();
   emit("update:modelValue", false);
-}
-
-function onCancel(event) {
-  event.preventDefault();
-  closeDialog();
 }
 
 function onKeydown(event) {
@@ -402,13 +393,10 @@ watch(
   async (isOpen) => {
     await nextTick();
     if (!dialog.value) return;
-    if (isOpen && !dialog.value.open) {
-      dialog.value.showModal();
+    if (isOpen) {
       await nextTick();
       resizeCanvases();
       liveCanvas.value.focus();
-    } else if (!isOpen && dialog.value.open) {
-      dialog.value.close();
     }
   },
 );
@@ -424,12 +412,11 @@ onMounted(() => {
   committedContext = committedCanvas.value.getContext("2d");
   liveContext = liveCanvas.value.getContext("2d");
   resizeObserver = new ResizeObserver(() => {
-    if (dialog.value?.open) resizeCanvases();
+    if (props.modelValue) resizeCanvases();
   });
   resizeObserver.observe(stage.value);
   window.addEventListener("resize", updateViewport);
   if (props.modelValue) {
-    dialog.value.showModal();
     nextTick(() => {
       resizeCanvases();
       liveCanvas.value.focus();
@@ -445,16 +432,12 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <dialog
-      ref="dialog"
-      class="sketch-dialog"
-      :style="dialogStyle"
-      aria-labelledby="sketch-dialog-title"
-      @cancel="onCancel"
-      @keydown="onKeydown"
-    >
+    <div v-show="modelValue" class="sketch-modal">
+      <div class="sketch-backdrop"></div>
+      <div ref="dialog" class="sketch-dialog" :style="dialogStyle" role="dialog" aria-modal="true" aria-labelledby="sketch-dialog-title" tabindex="-1" @keydown="onKeydown">
       <section class="sketch-editor" :class="{ 'is-controls-outside': controlsOutside }">
         <h2 id="sketch-dialog-title" class="sr-only">画板</h2>
+        <div id="sketch-popover-host"></div>
 
         <SketchToolbar
           :active-tool="activeTool"
@@ -464,8 +447,6 @@ onBeforeUnmount(() => {
           :can-redo="canRedo"
           :has-content="hasContent"
           :controls-outside="controlsOutside"
-          :ratio="canvasRatio"
-          :ratio-menu-open="activePopover === 'ratio'"
           @close="closeDialog"
           @select-tool="selectTool"
           @toggle-shapes="toggleShapeMenu"
@@ -475,14 +456,9 @@ onBeforeUnmount(() => {
           @clear="requestClearCanvas"
           @toggle-controls="toggleControlsOutside"
           @toggle-ratio="toggleRatioMenu"
-          @select-ratio="selectCanvasRatio"
+          @close-popover="closePopover"
         />
 
-        <FloatingPopover :open="Boolean(activePopover)" :anchor="popoverAnchor" @close="activePopover = null">
-          <ShapeMenu v-if="activePopover === 'shape'" :active-shape="activeShape" @select="selectShape" />
-          <RatioMenu v-else-if="activePopover === 'ratio'" :current="canvasRatio" @select="selectCanvasRatio" />
-          <ClearConfirm v-else-if="activePopover === 'clear'" @confirm="confirmClearCanvas" @cancel="activePopover = null" />
-        </FloatingPopover>
 
         <div class="sketch-body">
           <div ref="stage" class="sketch-stage">
@@ -524,12 +500,29 @@ onBeforeUnmount(() => {
         <StrokeSizeControl :model-value="strokeSize" :outside="controlsOutside" @update:model-value="setStrokeSize" />
         <div class="sr-only" aria-live="polite">{{ statusMessage }}</div>
       </section>
-    </dialog>
+      </div>
+    </div>
   </Teleport>
 </template>
 
 <style scoped>
+.sketch-modal {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+.sketch-backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--sketch-color-backdrop);
+  backdrop-filter: blur(3px);
+}
+
 .sketch-dialog {
+  position: relative;
   width: min(760px, calc(100vw - 32px), calc((100dvh - 32px) * var(--sketch-ratio)));
   aspect-ratio: var(--sketch-ratio);
   height: auto;
@@ -542,16 +535,11 @@ onBeforeUnmount(() => {
   background: transparent;
   color: var(--sketch-color-text);
   box-shadow: var(--sketch-shadow-dialog);
-  transform: scale(var(--sketch-outside-scale, 1));
+  transform: translateY(0) scale(var(--sketch-outside-scale, 1));
   transition: width var(--sketch-transition-expand), aspect-ratio var(--sketch-transition-expand), transform var(--sketch-transition-expand);
 }
 
-.sketch-dialog::backdrop {
-  background: var(--sketch-color-backdrop);
-  backdrop-filter: blur(3px);
-}
-
-.sketch-dialog[open] {
+.sketch-dialog {
   animation: dialog-in 220ms ease-out;
 }
 

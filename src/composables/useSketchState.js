@@ -1,16 +1,13 @@
 import { computed, ref } from "vue";
+import { activePopover, popoverAnchor } from "./usePopover.js";
+import { useSketchPreferences } from "./useSketchPreferences.js";
 
 export function useSketchState() {
   const activeTool = ref("pen");
   const activeShape = ref("rectangle");
-  const strokeColor = ref("#ffffff");
-  const strokeSize = ref(13);
+  const { strokeColor, strokeSize, controlsOutside, canvasRatio } = useSketchPreferences();
   const commands = ref([]);
   const selectedIndex = ref(-1);
-  const activePopover = ref(null);
-  const popoverAnchor = ref(null);
-  const controlsOutside = ref(false);
-  const canvasRatio = ref("1:1");
   const textEditor = ref(null);
   const textValue = ref("");
   const selectionCursor = ref("default");

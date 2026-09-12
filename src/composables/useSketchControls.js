@@ -1,12 +1,14 @@
+import { closePopover, openPopover } from "./usePopover.js";
+
 export function useSketchControls({ state, clone, pushHistory, render, resizeCanvases, announce, commitText }) {
-  const { activeTool, activeShape, strokeColor, strokeSize, selectedCommand, selectedIndex, activePopover, popoverAnchor, controlsOutside, canvasRatio } = state;
+  const { activeTool, activeShape, strokeColor, strokeSize, selectedCommand, selectedIndex, activePopover, controlsOutside, canvasRatio } = state;
 
   function selectTool(tool) {
     if (state.textEditor.value) commitText();
     activeTool.value = tool;
     selectedIndex.value = -1;
     state.selectionCursor.value = "default";
-    activePopover.value = null;
+    closePopover();
     render();
     announce(`${{ select: "选择并移动", pen: "画笔", text: "文字", eraser: "橡皮擦" }[tool] || "形状"}已选择`);
   }
@@ -15,25 +17,25 @@ export function useSketchControls({ state, clone, pushHistory, render, resizeCan
     if (state.textEditor.value) commitText();
     activeTool.value = "shape";
     selectedIndex.value = -1;
-    activePopover.value = activePopover.value === "shape" ? null : "shape";
-    popoverAnchor.value = anchor;
+    if (activePopover.value === "shape") closePopover();
+    else openPopover("shape", anchor, { select: selectShape }, { activeShape: activeShape.value });
     render();
   }
 
   function toggleControlsOutside() {
     controlsOutside.value = !controlsOutside.value;
-    activePopover.value = null;
+    closePopover();
     resizeCanvases();
   }
 
   function toggleRatioMenu(anchor) {
-    activePopover.value = activePopover.value === "ratio" ? null : "ratio";
-    popoverAnchor.value = anchor;
+    if (activePopover.value === "ratio") closePopover();
+    else openPopover("ratio", anchor, { select: selectCanvasRatio }, { current: canvasRatio.value });
   }
 
   function selectCanvasRatio(ratio) {
     canvasRatio.value = ratio;
-    activePopover.value = null;
+    closePopover();
     resizeCanvases();
     announce(`画布比例 ${ratio}`);
   }
@@ -41,7 +43,7 @@ export function useSketchControls({ state, clone, pushHistory, render, resizeCan
   function selectShape(shape) {
     activeShape.value = shape.id;
     activeTool.value = "shape";
-    activePopover.value = null;
+    closePopover();
     announce(`${shape.label}已选择`);
   }
 

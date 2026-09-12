@@ -45,7 +45,8 @@ function position() {
 }
 
 function onPointerDown(event) {
-  if (popover.value?.contains(event.target) || props.anchor?.contains(event.target) || event.target.closest?.('[aria-haspopup="menu"]')) return;
+  const path = event.composedPath?.() || [];
+  if (path.includes(popover.value) || path.includes(props.anchor) || event.target.closest?.('[aria-haspopup="menu"]')) return;
   emit("close");
 }
 
@@ -65,14 +66,14 @@ watch(() => props.open, async (open) => {
       position();
     });
     contentMutationObserver.observe(popover.value, { childList: true, subtree: true });
-    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeydown);
     window.addEventListener("resize", position);
     window.addEventListener("scroll", position, true);
   } else {
     isPositioned.value = false;
     contentObserver?.disconnect(); contentMutationObserver?.disconnect();
-    document.removeEventListener("pointerdown", onPointerDown, true);
+    document.removeEventListener("pointerdown", onPointerDown);
     document.removeEventListener("keydown", onKeydown);
     window.removeEventListener("resize", position); window.removeEventListener("scroll", position, true);
   }
@@ -81,14 +82,14 @@ watch(() => props.open, async (open) => {
 watch(() => props.anchor, async () => { if (props.open) { await nextTick(); position(); } });
 onBeforeUnmount(() => {
   cancelAnimationFrame(frame); contentObserver?.disconnect(); contentMutationObserver?.disconnect();
-  document.removeEventListener("pointerdown", onPointerDown, true); document.removeEventListener("keydown", onKeydown);
+  document.removeEventListener("pointerdown", onPointerDown); document.removeEventListener("keydown", onKeydown);
   window.removeEventListener("resize", position); window.removeEventListener("scroll", position, true);
 });
 </script>
 
-<template><div v-if="open" ref="popover" class="floating-popover" :class="{ 'is-positioned': isPositioned }" role="menu"><slot /></div></template>
+<template><div v-if="open" ref="popover" class="floating-popover" :class="{ 'is-positioned': isPositioned }" role="menu" @pointerdown.stop><slot /></div></template>
 
 <style>
-.floating-popover { position: absolute; z-index: var(--sketch-z-popover); top: 0; left: 0; box-sizing: border-box; overflow: hidden; padding: 10px; visibility: hidden; border: 1px solid var(--sketch-color-border); border-radius: 20px; background: var(--sketch-color-surface-raised); box-shadow: var(--sketch-shadow-popover); }
+.floating-popover { position: fixed; z-index: 2147483647; inset: auto; top: 0; left: 0; width: max-content; height: auto; box-sizing: border-box; overflow: hidden; margin: 0; padding: 10px; visibility: hidden; pointer-events: auto; border: 1px solid var(--sketch-color-border); border-radius: 20px; background: var(--sketch-color-surface-raised); box-shadow: var(--sketch-shadow-popover); }
 .floating-popover.is-positioned { visibility: visible; transition: height var(--sketch-transition-expand), transform var(--sketch-transition-expand); }
 </style>

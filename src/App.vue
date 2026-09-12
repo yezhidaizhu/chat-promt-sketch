@@ -2,6 +2,7 @@
 import { ref } from "vue";
 import { Pencil } from "@lucide/vue";
 import SketchDialog from "./components/SketchDialog.vue";
+import SketchPopoverRoot from "./components/SketchPopoverRoot.vue";
 
 const isSketchOpen = ref(false);
 </script>
@@ -14,6 +15,7 @@ const isSketchOpen = ref(false);
     </button>
 
     <SketchDialog v-model="isSketchOpen" />
+    <SketchPopoverRoot />
   </main>
 </template>
 
