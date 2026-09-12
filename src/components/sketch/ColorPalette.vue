@@ -224,4 +224,24 @@ const isCustom = computed(() => !colors.some((color) => color.value === props.mo
     display: none;
   }
 }
+
+@media (max-width: 720px) {
+  .bottom-controls.is-outside {
+    right: 0;
+    left: 136px;
+    justify-content: flex-start;
+  }
+
+  .bottom-controls.is-outside .color-palette {
+    width: calc(100% - 52px);
+    max-width: none;
+    justify-content: flex-start;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .bottom-controls.is-outside .color-palette::-webkit-scrollbar {
+    display: none;
+  }
+}
 </style>

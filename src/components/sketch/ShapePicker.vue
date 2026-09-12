@@ -38,8 +38,9 @@ const emit = defineEmits(["toggle"]);
 
 .tool-button {
   display: grid;
-  width: var(--sketch-control-size);
-  height: var(--sketch-control-size);
+  width: var(--toolbar-control-size, var(--sketch-control-size));
+  height: var(--toolbar-control-size, var(--sketch-control-size));
+  flex: 0 0 var(--toolbar-control-size, var(--sketch-control-size));
   padding: 0;
   place-items: center;
   border: 0;

@@ -282,5 +282,61 @@ function onKeydown(event) {
     top: 8px !important;
     left: clamp(0px, calc(var(--slider-percent) - 16px), calc(100% - 32px));
   }
+
+}
+
+@media (max-width: 720px) {
+  .brush-controls.is-outside {
+    top: auto;
+    bottom: -48px;
+    left: 0;
+    width: auto;
+    padding: 0;
+    background: transparent;
+    box-shadow: none;
+    flex-direction: row;
+    transform: none;
+  }
+
+  .brush-controls.is-outside .size-control {
+    width: 128px;
+    height: 36px;
+    cursor: ew-resize;
+  }
+
+  .brush-controls.is-outside .size-control__track {
+    top: 50%;
+    right: var(--sketch-slider-inset);
+    bottom: auto;
+    left: var(--sketch-slider-inset);
+    width: auto;
+    height: 2px;
+    opacity: 0;
+    transform: translateY(-50%);
+  }
+
+  .brush-controls.is-outside .size-control__scale {
+    top: 13px;
+    left: var(--sketch-slider-inset);
+    display: block;
+    width: calc(100% - var(--sketch-slider-inset) * 2);
+    height: 10px;
+    background: var(--sketch-slider-scale);
+    clip-path: polygon(0 44%, 100% 0, 100% 100%, 0 56%);
+    opacity: 1;
+    transform: none;
+  }
+
+  .brush-controls.is-outside .size-control__thumb {
+    width: 24px;
+    height: 24px;
+    top: 6px !important;
+    left: clamp(4px, calc(var(--slider-percent) - 12px), calc(100% - 28px));
+  }
+
+  .brush-controls.is-outside .size-control__thumb::after {
+    width: 16px;
+    height: 16px;
+  }
 }
 </style>

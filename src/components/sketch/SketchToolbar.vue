@@ -1,8 +1,9 @@
 <script setup>
-import { BrushCleaning, ChevronsLeft, ChevronsRight, Copy, Eraser, MousePointer2, Pencil, Ratio, Redo2, Type, Undo2, X } from "@lucide/vue";
-import { ref } from "vue";
+import { BrushCleaning, ChevronsLeft, ChevronsRight, Copy, Eraser, MousePointer2, Ratio, Redo2, Type, Undo2, X } from "@lucide/vue";
+import { nextTick, ref } from "vue";
 import ShapePicker from "./ShapePicker.vue";
 import MoveControlsIcon from "./MoveControlsIcon.vue";
+import SketchToolIcon from "./SketchToolIcon.vue";
 
 defineProps({
   activeTool: {
@@ -35,19 +36,38 @@ const emit = defineEmits([
 ]);
 
 const moreExpanded = ref(false);
+const toolScroll = ref(null);
+const toolScrollAtEnd = ref(true);
 
-function toggleMore() {
+async function toggleMore() {
   moreExpanded.value = !moreExpanded.value;
   emit("close-popover");
+  await nextTick();
+  updateToolScrollPosition();
 }
 
 function selectMoreAction(event, action) {
   emit(action, event.currentTarget);
 }
 
+function scrollTools(event) {
+  const element = toolScroll.value;
+  if (!moreExpanded.value || !element || element.scrollWidth <= element.clientWidth) return;
+
+  const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+  if (!delta) return;
+  element.scrollLeft += delta;
+  event.preventDefault();
+}
+
+function updateToolScrollPosition() {
+  const element = toolScroll.value;
+  toolScrollAtEnd.value = !element || element.scrollLeft + element.clientWidth >= element.scrollWidth - 1;
+}
+
 const tools = [
   { id: "select", label: "选择并移动", icon: MousePointer2 },
-  { id: "pen", label: "画笔", icon: Pencil },
+  { id: "pen", label: "画笔", icon: SketchToolIcon },
   { id: "text", label: "文字", icon: Type },
 ];
 </script>
@@ -58,8 +78,9 @@ const tools = [
       <X :size="21" aria-hidden="true" />
     </button>
 
-    <div class="tool-group" :class="{ 'is-expanded': moreExpanded }" role="toolbar" aria-label="绘图工具">
-      <button
+    <div class="tool-group" :class="{ 'is-expanded': moreExpanded, 'is-at-end': toolScrollAtEnd }" role="toolbar" aria-label="绘图工具">
+      <div ref="toolScroll" class="tool-scroll" @scroll="updateToolScrollPosition" @wheel="scrollTools">
+        <button
         v-for="tool in tools"
         :key="tool.id"
         class="tool-button"
@@ -93,24 +114,25 @@ const tools = [
         <Eraser :size="20" aria-hidden="true" />
       </button>
 
-      <button v-if="!moreExpanded" class="tool-button more-toggle" type="button" title="展开更多操作" aria-label="展开更多操作" aria-haspopup="menu" :aria-expanded="moreExpanded" @click="toggleMore">
-        <ChevronsRight :size="20" aria-hidden="true" />
-      </button>
+        <button v-if="!moreExpanded" class="tool-button more-toggle" type="button" title="展开更多操作" aria-label="展开更多操作" aria-haspopup="menu" :aria-expanded="moreExpanded" @click="toggleMore">
+          <ChevronsRight :size="20" aria-hidden="true" />
+        </button>
 
-      <template v-if="moreExpanded">
-        <button class="tool-button" type="button" title="画布比例" aria-label="画布比例" aria-haspopup="menu" @click="selectMoreAction($event, 'toggle-ratio')">
-          <Ratio :size="20" aria-hidden="true" />
-        </button>
-        <button class="tool-button" type="button" :title="controlsOutside ? '操作区移回画布内' : '操作区移到画布外'" :aria-label="controlsOutside ? '操作区移回画布内' : '操作区移到画布外'" :aria-pressed="controlsOutside" @click="selectMoreAction($event, 'toggle-controls')">
-          <MoveControlsIcon :outside="controlsOutside" />
-        </button>
-        <button class="tool-button" type="button" title="复制 PNG 图片" aria-label="复制 PNG 图片" :disabled="!canCopy" @click="emit('copy')">
-          <Copy :size="19" aria-hidden="true" />
-        </button>
-        <button class="tool-button more-toggle" type="button" title="收起更多操作" aria-label="收起更多操作" aria-haspopup="menu" :aria-expanded="moreExpanded" @click="toggleMore">
-          <ChevronsLeft :size="20" aria-hidden="true" />
-        </button>
-      </template>
+        <template v-if="moreExpanded">
+          <button class="tool-button" type="button" title="画布比例" aria-label="画布比例" aria-haspopup="menu" @click="selectMoreAction($event, 'toggle-ratio')">
+            <Ratio :size="20" aria-hidden="true" />
+          </button>
+          <button class="tool-button" type="button" :title="controlsOutside ? '操作区移回画布内' : '操作区移到画布外'" :aria-label="controlsOutside ? '操作区移回画布内' : '操作区移到画布外'" :aria-pressed="controlsOutside" @click="selectMoreAction($event, 'toggle-controls')">
+            <MoveControlsIcon :outside="controlsOutside" />
+          </button>
+          <button class="tool-button" type="button" title="复制 PNG 图片" aria-label="复制 PNG 图片" :disabled="!canCopy" @click="emit('copy')">
+            <Copy :size="19" aria-hidden="true" />
+          </button>
+        </template>
+      </div>
+      <button v-if="moreExpanded" class="tool-button more-toggle" type="button" title="收起更多操作" aria-label="收起更多操作" aria-haspopup="menu" :aria-expanded="moreExpanded" @click="toggleMore">
+        <ChevronsLeft :size="20" aria-hidden="true" />
+      </button>
     </div>
 
     <div class="action-group" role="group" aria-label="画布操作">
@@ -158,8 +180,11 @@ const tools = [
 
 .tool-group {
   --toolbar-control-size: var(--sketch-control-size);
+  position: relative;
   display: flex;
   width: calc(var(--toolbar-control-size) * 6 + 10px + var(--sketch-space-1) * 2);
+  min-width: 0;
+  max-width: 100%;
   gap: 2px;
   padding: var(--sketch-space-1);
   border: 1px solid var(--sketch-color-border);
@@ -175,27 +200,48 @@ const tools = [
 
 .tool-group.is-expanded {
   width: calc(var(--toolbar-control-size) * 9 + 16px + var(--sketch-space-1) * 2);
-  overflow-x: auto;
 }
 
-.tool-group::-webkit-scrollbar { display: none; }
+.tool-scroll {
+  display: flex;
+  min-width: 0;
+}
+
+.tool-group.is-expanded .tool-scroll {
+  flex: 1 1 auto;
+  gap: 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.tool-scroll::-webkit-scrollbar { display: none; }
 
 .more-toggle {
   flex: 0 0 var(--toolbar-control-size);
-  background: var(--sketch-color-control);
+  background: #000000;
   color: var(--sketch-color-text);
 }
 
-.tool-group.is-expanded .more-toggle {
-  position: sticky;
-  right: 0;
+.shape-picker,
+.tool-scroll > .tool-button {
+  flex: 0 0 var(--toolbar-control-size);
+}
+
+.tool-group.is-expanded:not(.is-at-end) > .more-toggle {
+  position: relative;
   z-index: 1;
-  box-shadow: -6px 0 8px rgba(27, 27, 27, 0.28);
+  margin-left: 2px;
+  box-shadow: -6px 0 10px rgba(0, 0, 0, 0.5);
 }
 
 .more-toggle:hover {
-  background: var(--sketch-color-control-hover);
+  background: #000000;
 }
+
 
 .editor-header.is-outside .tool-group {
   background: var(--sketch-color-control);
@@ -221,7 +267,7 @@ const tools = [
   background: transparent;
   color: var(--sketch-color-text-muted);
   cursor: pointer;
-  transition: color var(--sketch-transition-fast), background-color var(--sketch-transition-fast), opacity var(--sketch-transition-fast);
+  transition: color var(--sketch-transition-fast), background-color var(--sketch-transition-fast), box-shadow var(--sketch-transition-fast), opacity var(--sketch-transition-fast);
 }
 
 .icon-button:hover:not(:disabled),
@@ -258,11 +304,12 @@ const tools = [
     top: var(--sketch-space-2);
     right: var(--sketch-space-2);
     left: var(--sketch-space-2);
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    column-gap: var(--sketch-space-2);
   }
 
   .editor-header.is-outside {
-    top: calc(-1 * (var(--sketch-control-size) * 2 + var(--sketch-space-2) + var(--sketch-space-1) * 2 + var(--sketch-space-3)));
+    top: calc(-1 * (var(--sketch-control-size) + var(--sketch-space-1) * 2 + var(--sketch-space-3)));
   }
 
   .close-button {
@@ -270,16 +317,16 @@ const tools = [
   }
 
   .action-group {
-    grid-column: 2;
+    grid-column: 3;
     grid-row: 1;
   }
 
   .tool-group {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    justify-self: center;
-    margin-top: var(--sketch-space-2);
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: start;
   }
+
 }
 
 @media (max-width: 420px) {
@@ -287,6 +334,30 @@ const tools = [
     --toolbar-control-size: 30px;
     gap: 0;
     padding: 2px;
+  }
+}
+
+@media (max-width: 360px) {
+  .editor-header {
+    right: 6px;
+    left: 6px;
+    column-gap: 2px;
+  }
+
+  .tool-group {
+    --toolbar-control-size: 28px;
+    gap: 0;
+    padding: 2px;
+  }
+
+  .action-group {
+    gap: 2px;
+  }
+
+  .icon-button,
+  .tool-button {
+    width: 28px;
+    height: 28px;
   }
 }
 </style>

@@ -59,18 +59,18 @@ const dialogStyle = computed(() => {
   const style = { "--sketch-ratio": ratioValue.value };
   if (!controlsOutside.value) return style;
 
+  const isNarrow = viewport.value.width <= 720;
+  const outsideWidth = isNarrow ? 0 : 128;
+  const outsideHeight = 104;
   const canvasWidth = Math.min(
     760,
-    viewport.value.width - 32,
-    (viewport.value.height - 32) * ratioValue.value,
+    viewport.value.width - 32 - outsideWidth,
+    (viewport.value.height - 32 - outsideHeight) * ratioValue.value,
   );
-  const canvasHeight = canvasWidth / ratioValue.value;
-  const scale = Math.min(
-    1,
-    (viewport.value.width - 32) / (canvasWidth + 60),
-    (viewport.value.height - 32) / (canvasHeight + 104),
-  );
-  return { ...style, "--sketch-outside-scale": scale };
+  return {
+    ...style,
+    width: `${canvasWidth}px`,
+  };
 });
 
 const canvasCursor = computed(() => {
@@ -560,7 +560,7 @@ onBeforeUnmount(() => {
   background: transparent;
   color: var(--sketch-color-text);
   box-shadow: var(--sketch-shadow-dialog);
-  transform: translateY(0) scale(var(--sketch-outside-scale, 1));
+  transform: translateX(var(--sketch-outside-offset-x, 0));
   transition: width var(--sketch-transition-expand), aspect-ratio var(--sketch-transition-expand), transform var(--sketch-transition-expand);
 }
 
@@ -624,11 +624,11 @@ onBeforeUnmount(() => {
 @keyframes dialog-in {
   from {
     opacity: 0;
-    transform: translateY(8px) scale(calc(var(--sketch-outside-scale, 1) * 0.98));
+    transform: translate(var(--sketch-outside-offset-x, 0), 8px) scale(0.98);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(var(--sketch-outside-scale, 1));
+    transform: translateX(var(--sketch-outside-offset-x, 0));
   }
 }
 
