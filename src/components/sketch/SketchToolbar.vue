@@ -1,7 +1,8 @@
 <script setup>
-import { ChevronsLeft, ChevronsRight, Eraser, MousePointer2, PanelLeft, Pencil, Ratio, Redo2, Trash2, Type, Undo2, X } from "@lucide/vue";
+import { BrushCleaning, ChevronsLeft, ChevronsRight, Copy, Eraser, MousePointer2, Pencil, Ratio, Redo2, Type, Undo2, X } from "@lucide/vue";
 import { ref } from "vue";
 import ShapePicker from "./ShapePicker.vue";
+import MoveControlsIcon from "./MoveControlsIcon.vue";
 
 defineProps({
   activeTool: {
@@ -15,6 +16,7 @@ defineProps({
   shapeMenuOpen: Boolean,
   canUndo: Boolean,
   canRedo: Boolean,
+  canCopy: Boolean,
   hasContent: Boolean,
   controlsOutside: Boolean,
 });
@@ -100,7 +102,10 @@ const tools = [
           <Ratio :size="20" aria-hidden="true" />
         </button>
         <button class="tool-button" type="button" :title="controlsOutside ? '操作区移回画布内' : '操作区移到画布外'" :aria-label="controlsOutside ? '操作区移回画布内' : '操作区移到画布外'" :aria-pressed="controlsOutside" @click="selectMoreAction($event, 'toggle-controls')">
-          <PanelLeft :size="19" aria-hidden="true" />
+          <MoveControlsIcon :outside="controlsOutside" />
+        </button>
+        <button class="tool-button" type="button" title="复制 PNG 图片" aria-label="复制 PNG 图片" :disabled="!canCopy" @click="emit('copy')">
+          <Copy :size="19" aria-hidden="true" />
         </button>
         <button class="tool-button more-toggle" type="button" title="收起更多操作" aria-label="收起更多操作" aria-haspopup="menu" :aria-expanded="moreExpanded" @click="toggleMore">
           <ChevronsLeft :size="20" aria-hidden="true" />
@@ -116,7 +121,7 @@ const tools = [
         <Redo2 :size="20" aria-hidden="true" />
       </button>
       <button class="icon-button" type="button" title="清空画布" aria-label="清空画布" aria-haspopup="menu" :disabled="!hasContent" @click="emit('clear', $event.currentTarget)">
-        <Trash2 :size="19" aria-hidden="true" />
+        <BrushCleaning :size="19" aria-hidden="true" />
       </button>
     </div>
   </header>
@@ -164,11 +169,32 @@ const tools = [
   backdrop-filter: blur(12px) saturate(120%);
   overflow: hidden;
   transition: width var(--sketch-transition-expand);
+  scrollbar-width: none;
   /* box-shadow: var(--sketch-shadow-popover); */
 }
 
 .tool-group.is-expanded {
-  width: calc(var(--toolbar-control-size) * 8 + 14px + var(--sketch-space-1) * 2);
+  width: calc(var(--toolbar-control-size) * 9 + 16px + var(--sketch-space-1) * 2);
+  overflow-x: auto;
+}
+
+.tool-group::-webkit-scrollbar { display: none; }
+
+.more-toggle {
+  flex: 0 0 var(--toolbar-control-size);
+  background: var(--sketch-color-control);
+  color: var(--sketch-color-text);
+}
+
+.tool-group.is-expanded .more-toggle {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  box-shadow: -6px 0 8px rgba(27, 27, 27, 0.28);
+}
+
+.more-toggle:hover {
+  background: var(--sketch-color-control-hover);
 }
 
 .editor-header.is-outside .tool-group {

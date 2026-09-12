@@ -311,6 +311,29 @@ function confirmClearCanvas() {
   announce("画布已清空");
 }
 
+async function copyCanvas() {
+  if (!hasContent.value || !navigator.clipboard || typeof ClipboardItem === "undefined") {
+    announce("当前环境不支持复制 PNG");
+    return;
+  }
+  const output = document.createElement("canvas");
+  output.width = committedCanvas.value.width;
+  output.height = committedCanvas.value.height;
+  const context = output.getContext("2d");
+  context.fillStyle = "#212121";
+  context.fillRect(0, 0, output.width, output.height);
+  context.drawImage(committedCanvas.value, 0, 0);
+  output.toBlob(async (blob) => {
+    if (!blob) return;
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      announce("PNG 图片已复制");
+    } catch {
+      announce("复制 PNG 失败");
+    }
+  }, "image/png");
+}
+
 function requestClearCanvas(anchor) {
   if (activePopover.value === "clear") closePopover();
   else openPopover("clear", anchor, { confirm: confirmClearCanvas, cancel: closePopover });
@@ -445,6 +468,7 @@ onBeforeUnmount(() => {
           :shape-menu-open="activePopover === 'shape'"
           :can-undo="canUndo"
           :can-redo="canRedo"
+          :can-copy="hasContent"
           :has-content="hasContent"
           :controls-outside="controlsOutside"
           @close="closeDialog"
@@ -452,6 +476,7 @@ onBeforeUnmount(() => {
           @toggle-shapes="toggleShapeMenu"
           @select-shape="selectShape"
           @undo="undo"
+          @copy="copyCanvas"
           @redo="redo"
           @clear="requestClearCanvas"
           @toggle-controls="toggleControlsOutside"
