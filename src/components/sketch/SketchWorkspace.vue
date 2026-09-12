@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import ColorPalette from "./ColorPalette.vue";
 import SketchToolbar from "./SketchToolbar.vue";
 import StrokeSizeControl from "./StrokeSizeControl.vue";
-import PopoverHost from "./PopoverHost.vue";
+import FloatingPopover from "../FloatingPopover.vue";
 import ShapeMenu from "./ShapeMenu.vue";
 import RatioMenu from "./RatioMenu.vue";
 import ClearConfirm from "./ClearConfirm.vue";
@@ -478,11 +478,11 @@ onBeforeUnmount(() => {
           @select-ratio="selectCanvasRatio"
         />
 
-        <PopoverHost :open="Boolean(activePopover)" :anchor="popoverAnchor" @close="activePopover = null">
+        <FloatingPopover :open="Boolean(activePopover)" :anchor="popoverAnchor" @close="activePopover = null">
           <ShapeMenu v-if="activePopover === 'shape'" :active-shape="activeShape" @select="selectShape" />
           <RatioMenu v-else-if="activePopover === 'ratio'" :current="canvasRatio" @select="selectCanvasRatio" />
           <ClearConfirm v-else-if="activePopover === 'clear'" @confirm="confirmClearCanvas" @cancel="activePopover = null" />
-        </PopoverHost>
+        </FloatingPopover>
 
         <div class="sketch-body">
           <div ref="stage" class="sketch-stage">
