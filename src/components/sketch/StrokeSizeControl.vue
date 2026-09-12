@@ -43,7 +43,12 @@ function startDrag(event) {
 }
 
 function moveDrag(event) {
-  if (dragging.value) updateValue(event, event.currentTarget);
+  if (!dragging.value) return;
+  if (event.buttons === 0) {
+    finishDrag(event);
+    return;
+  }
+  updateValue(event, event.currentTarget);
 }
 
 function finishDrag(event) {
@@ -84,6 +89,7 @@ function onKeydown(event) {
       @pointermove.prevent="moveDrag"
       @pointerup.prevent="finishDrag"
       @pointercancel.prevent="finishDrag"
+      @lostpointercapture="finishDrag"
       @keydown="onKeydown"
     >
       <span class="size-control__track" aria-hidden="true"></span>
