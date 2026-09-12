@@ -1,6 +1,6 @@
 <script setup>
-import { BrushCleaning, ChevronsLeft, ChevronsRight, Copy, Eraser, MousePointer2, Ratio, Redo2, Type, Undo2, X } from "@lucide/vue";
-import { nextTick, ref } from "vue";
+import { BrushCleaning, Check, ChevronsDown, ChevronsUp, Copy, Eraser, MousePointer2, Ratio, Redo2, Type, Undo2, X } from "@lucide/vue";
+import { ref } from "vue";
 import ShapePicker from "./ShapePicker.vue";
 import MoveControlsIcon from "./MoveControlsIcon.vue";
 import SketchToolIcon from "./SketchToolIcon.vue";
@@ -18,6 +18,7 @@ defineProps({
   canUndo: Boolean,
   canRedo: Boolean,
   canCopy: Boolean,
+  copySucceeded: Boolean,
   hasContent: Boolean,
   controlsOutside: Boolean,
 });
@@ -29,6 +30,7 @@ const emit = defineEmits([
   "select-shape",
   "undo",
   "redo",
+  "copy",
   "clear",
   "toggle-controls",
   "toggle-ratio",
@@ -36,33 +38,14 @@ const emit = defineEmits([
 ]);
 
 const moreExpanded = ref(false);
-const toolScroll = ref(null);
-const toolScrollAtEnd = ref(true);
 
-async function toggleMore() {
+function toggleMore() {
   moreExpanded.value = !moreExpanded.value;
   emit("close-popover");
-  await nextTick();
-  updateToolScrollPosition();
 }
 
 function selectMoreAction(event, action) {
   emit(action, event.currentTarget);
-}
-
-function scrollTools(event) {
-  const element = toolScroll.value;
-  if (!moreExpanded.value || !element || element.scrollWidth <= element.clientWidth) return;
-
-  const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
-  if (!delta) return;
-  element.scrollLeft += delta;
-  event.preventDefault();
-}
-
-function updateToolScrollPosition() {
-  const element = toolScroll.value;
-  toolScrollAtEnd.value = !element || element.scrollLeft + element.clientWidth >= element.scrollWidth - 1;
 }
 
 const tools = [
@@ -78,9 +61,8 @@ const tools = [
       <X :size="21" aria-hidden="true" />
     </button>
 
-    <div class="tool-group" :class="{ 'is-expanded': moreExpanded, 'is-at-end': toolScrollAtEnd }" role="toolbar" aria-label="绘图工具">
-      <div ref="toolScroll" class="tool-scroll" @scroll="updateToolScrollPosition" @wheel="scrollTools">
-        <button
+    <div class="tool-group" role="toolbar" aria-label="绘图工具">
+      <button
         v-for="tool in tools"
         :key="tool.id"
         class="tool-button"
@@ -114,25 +96,11 @@ const tools = [
         <Eraser :size="20" aria-hidden="true" />
       </button>
 
-        <button v-if="!moreExpanded" class="tool-button more-toggle" type="button" title="展开更多操作" aria-label="展开更多操作" aria-haspopup="menu" :aria-expanded="moreExpanded" @click="toggleMore">
-          <ChevronsRight :size="20" aria-hidden="true" />
-        </button>
-
-        <template v-if="moreExpanded">
-          <button class="tool-button" type="button" title="画布比例" aria-label="画布比例" aria-haspopup="menu" @click="selectMoreAction($event, 'toggle-ratio')">
-            <Ratio :size="20" aria-hidden="true" />
-          </button>
-          <button class="tool-button" type="button" :title="controlsOutside ? '操作区移回画布内' : '操作区移到画布外'" :aria-label="controlsOutside ? '操作区移回画布内' : '操作区移到画布外'" :aria-pressed="controlsOutside" @click="selectMoreAction($event, 'toggle-controls')">
-            <MoveControlsIcon :outside="controlsOutside" />
-          </button>
-          <button class="tool-button" type="button" title="复制 PNG 图片" aria-label="复制 PNG 图片" :disabled="!canCopy" @click="emit('copy')">
-            <Copy :size="19" aria-hidden="true" />
-          </button>
-        </template>
-      </div>
-      <button v-if="moreExpanded" class="tool-button more-toggle" type="button" title="收起更多操作" aria-label="收起更多操作" aria-haspopup="menu" :aria-expanded="moreExpanded" @click="toggleMore">
-        <ChevronsLeft :size="20" aria-hidden="true" />
+      <!--
+      <button class="tool-button" type="button" title="展开更多绘图工具" aria-label="展开更多绘图工具">
+        <ChevronRight :size="20" aria-hidden="true" />
       </button>
+      -->
     </div>
 
     <div class="action-group" role="group" aria-label="画布操作">
@@ -145,6 +113,26 @@ const tools = [
       <button class="icon-button" type="button" title="清空画布" aria-label="清空画布" aria-haspopup="menu" :disabled="!hasContent" @click="emit('clear', $event.currentTarget)">
         <BrushCleaning :size="19" aria-hidden="true" />
       </button>
+      <div class="settings-stack" :class="{ 'is-expanded': moreExpanded }">
+        <button v-if="!moreExpanded" class="icon-button more-toggle" type="button" title="展开画布设置" aria-label="展开画布设置" aria-haspopup="menu" :aria-expanded="moreExpanded" @click="toggleMore">
+          <ChevronsDown :size="20" aria-hidden="true" />
+        </button>
+        <div v-else class="canvas-settings-menu" role="menu" aria-label="画布设置">
+          <button class="more-toggle" type="button" title="收起画布设置" aria-label="收起画布设置" @click="toggleMore">
+            <ChevronsUp :size="20" aria-hidden="true" />
+          </button>
+          <button type="button" role="menuitem" title="画布比例" aria-label="画布比例" @click="selectMoreAction($event, 'toggle-ratio')">
+            <Ratio :size="18" aria-hidden="true" />
+          </button>
+          <button type="button" role="menuitem" :title="controlsOutside ? '操作区移回画布内' : '操作区移到画布外'" :aria-label="controlsOutside ? '操作区移回画布内' : '操作区移到画布外'" @click="selectMoreAction($event, 'toggle-controls')">
+            <MoveControlsIcon :outside="controlsOutside" />
+          </button>
+          <button class="copy-action" :class="{ 'is-success': copySucceeded }" type="button" role="menuitem" title="复制 PNG 图片" aria-label="复制 PNG 图片" :aria-disabled="copySucceeded" :disabled="!canCopy" @click="!copySucceeded && selectMoreAction($event, 'copy')">
+            <Check v-if="copySucceeded" :size="18" aria-hidden="true" />
+            <Copy v-else :size="18" aria-hidden="true" />
+          </button>
+        </div>
+      </div>
     </div>
   </header>
 </template>
@@ -180,11 +168,9 @@ const tools = [
 
 .tool-group {
   --toolbar-control-size: var(--sketch-control-size);
-  position: relative;
   display: flex;
-  width: calc(var(--toolbar-control-size) * 6 + 10px + var(--sketch-space-1) * 2);
+  width: calc(var(--toolbar-control-size) * 5 + 8px + var(--sketch-space-1) * 2);
   min-width: 0;
-  max-width: 100%;
   gap: 2px;
   padding: var(--sketch-space-1);
   border: 1px solid var(--sketch-color-border);
@@ -192,54 +178,11 @@ const tools = [
   background: rgba(27, 27, 27, 0.62);
   -webkit-backdrop-filter: blur(12px) saturate(120%);
   backdrop-filter: blur(12px) saturate(120%);
-  overflow: hidden;
-  transition: width var(--sketch-transition-expand);
-  scrollbar-width: none;
-  /* box-shadow: var(--sketch-shadow-popover); */
-}
-
-.tool-group.is-expanded {
-  width: calc(var(--toolbar-control-size) * 9 + 16px + var(--sketch-space-1) * 2);
-}
-
-.tool-scroll {
-  display: flex;
-  min-width: 0;
-}
-
-.tool-group.is-expanded .tool-scroll {
-  flex: 1 1 auto;
-  gap: 2px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  overscroll-behavior-x: contain;
-  touch-action: pan-x;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-}
-
-.tool-scroll::-webkit-scrollbar { display: none; }
-
-.more-toggle {
-  flex: 0 0 var(--toolbar-control-size);
-  background: #000000;
-  color: var(--sketch-color-text);
 }
 
 .shape-picker,
-.tool-scroll > .tool-button {
+.tool-group > .tool-button {
   flex: 0 0 var(--toolbar-control-size);
-}
-
-.tool-group.is-expanded:not(.is-at-end) > .more-toggle {
-  position: relative;
-  z-index: 1;
-  margin-left: 2px;
-  box-shadow: -6px 0 10px rgba(0, 0, 0, 0.5);
-}
-
-.more-toggle:hover {
-  background: #000000;
 }
 
 
@@ -253,6 +196,87 @@ const tools = [
   position: relative;
   justify-self: end;
   gap: var(--sketch-space-2);
+}
+
+.settings-stack {
+  position: relative;
+  width: calc(var(--sketch-control-size) + var(--sketch-space-1) * 2 + 2px);
+  height: calc(var(--sketch-control-size) + var(--sketch-space-1) * 2 + 2px);
+  flex: 0 0 auto;
+}
+
+.settings-stack > .more-toggle {
+  position: absolute;
+  top: var(--sketch-space-1);
+  right: var(--sketch-space-1);
+}
+
+.canvas-settings-menu {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: var(--sketch-z-popover);
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sketch-space-1);
+  border: 1px solid var(--sketch-color-border);
+  border-radius: var(--sketch-radius-pill);
+  background: rgba(27, 27, 27, 0.62);
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
+  backdrop-filter: blur(12px) saturate(120%);
+  animation: settings-expand var(--sketch-transition-expand);
+  transform-origin: top;
+}
+
+.canvas-settings-menu button {
+  display: grid;
+  width: var(--sketch-control-size);
+  height: var(--sketch-control-size);
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--sketch-color-text-muted);
+  cursor: pointer;
+}
+
+.canvas-settings-menu button:hover:not(:disabled) {
+  background: var(--sketch-color-control-hover);
+  color: var(--sketch-color-text);
+}
+
+.canvas-settings-menu button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.canvas-settings-menu .copy-action.is-success,
+.canvas-settings-menu .copy-action.is-success:hover:not(:disabled) {
+  color: var(--sketch-color-selection);
+}
+
+.more-toggle {
+  background: #000000;
+  color: var(--sketch-color-text);
+}
+
+.more-toggle:hover:not(:disabled) {
+  background: #000000;
+  color: var(--sketch-color-text);
+}
+
+@keyframes settings-expand {
+  from {
+    opacity: 0;
+    transform: scaleY(0.7);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
 }
 
 .icon-button,

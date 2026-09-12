@@ -36,12 +36,14 @@ const {
 const pointerCursor = ref({ x: 0, y: 0, visible: false });
 const statusMessage = ref("");
 const viewport = ref({ width: window.innerWidth, height: window.innerHeight });
+const copySucceeded = ref(false);
 
 let committedContext;
 let liveContext;
 let stageSize = { width: 1, height: 1 };
 let textTransform = null;
 let resizeObserver;
+let copyFeedbackTimer;
 
 const textEditorPadding = 6;
 const textEditorMinWidth = 48;
@@ -327,8 +329,12 @@ async function copyCanvas() {
     if (!blob) return;
     try {
       await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      copySucceeded.value = true;
+      clearTimeout(copyFeedbackTimer);
+      copyFeedbackTimer = setTimeout(() => { copySucceeded.value = false; }, 1600);
       announce("PNG 图片已复制");
     } catch {
+      copySucceeded.value = false;
       announce("复制 PNG 失败");
     }
   }, "image/png");
@@ -449,6 +455,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   resizeObserver?.disconnect();
+  clearTimeout(copyFeedbackTimer);
   window.removeEventListener("resize", updateViewport);
 });
 </script>
@@ -469,6 +476,7 @@ onBeforeUnmount(() => {
           :can-undo="canUndo"
           :can-redo="canRedo"
           :can-copy="hasContent"
+          :copy-succeeded="copySucceeded"
           :has-content="hasContent"
           :controls-outside="controlsOutside"
           @close="closeDialog"
