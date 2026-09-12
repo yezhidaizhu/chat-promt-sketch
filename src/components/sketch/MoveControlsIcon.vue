@@ -12,5 +12,5 @@ defineProps({ outside: Boolean });
 </template>
 
 <style scoped>
-.move-controls-icon { display: block; width: 19px; height: 22px; }
+.move-controls-icon { display: block; width: 18px; height: 18px; }
 </style>

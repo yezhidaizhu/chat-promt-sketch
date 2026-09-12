@@ -161,8 +161,8 @@ function onKeydown(event) {
 }
 
 .size-control__thumb::after {
-  width: 20px;
-  height: 20px;
+  width: 19px;
+  height: 19px;
   border-radius: 50%;
   background: var(--sketch-slider-thumb);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);

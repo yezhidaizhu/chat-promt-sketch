@@ -1,6 +1,6 @@
 import { closePopover, openPopover } from "./usePopover.js";
 
-export function useSketchControls({ state, clone, pushHistory, render, resizeCanvases, announce, commitText }) {
+export function useSketchControls({ state, clone, pushHistory, render, resizeCanvases, announce, commitText, onRatioChange }) {
   const { activeTool, activeShape, strokeColor, strokeSize, selectedCommand, selectedIndex, activePopover, controlsOutside, canvasRatio } = state;
 
   function selectTool(tool) {
@@ -34,6 +34,7 @@ export function useSketchControls({ state, clone, pushHistory, render, resizeCan
   }
 
   function selectCanvasRatio(ratio) {
+    if (onRatioChange) return onRatioChange(ratio);
     canvasRatio.value = ratio;
     closePopover();
     resizeCanvases();

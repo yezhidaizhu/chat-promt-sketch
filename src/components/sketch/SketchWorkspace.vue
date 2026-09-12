@@ -13,6 +13,7 @@ import { useSketchTextEditor } from "../../composables/useSketchTextEditor.js";
 import { closePopover, openPopover } from "../../composables/usePopover.js";
 import { isSelectionFrameHit as hitSelectionFrame, resizeCursor as getResizeCursor } from "../../utils/hitTest.js";
 import { drawFreehand, drawShape, prepareContext } from "../../utils/sketchDrawing.js";
+import { fitContentToCanvas } from "../../utils/fitContentToCanvas.js";
 
 const props = defineProps({
   modelValue: {
@@ -37,6 +38,10 @@ const pointerCursor = ref({ x: 0, y: 0, visible: false });
 const statusMessage = ref("");
 const viewport = ref({ width: window.innerWidth, height: window.innerHeight });
 const copySucceeded = ref(false);
+const interfaceFullscreen = ref(false);
+const browserFullscreen = ref(Boolean(document.fullscreenElement));
+const isFullscreen = computed(() => interfaceFullscreen.value || browserFullscreen.value);
+const effectiveControlsOutside = computed(() => controlsOutside.value && !isFullscreen.value);
 
 let committedContext;
 let liveContext;
@@ -44,6 +49,7 @@ let stageSize = { width: 1, height: 1 };
 let textTransform = null;
 let resizeObserver;
 let copyFeedbackTimer;
+let browserFullscreenTransition;
 
 const textEditorPadding = 6;
 const textEditorMinWidth = 48;
@@ -59,7 +65,7 @@ const ratioValue = computed(() => {
 });
 const dialogStyle = computed(() => {
   const style = { "--sketch-ratio": ratioValue.value };
-  if (!controlsOutside.value) return style;
+  if (interfaceFullscreen.value || !effectiveControlsOutside.value) return style;
 
   const isNarrow = viewport.value.width <= 720;
   const outsideWidth = isNarrow ? 0 : 128;
@@ -118,9 +124,88 @@ const { undoStack, redoStack, canUndo, canRedo, clone, pushHistory, undo, redo }
 );
 let controls;
 const { textLayout, textEditorBounds, startText, beginTextEdit, commitText, cancelText, resizeTextCommand, startTextTransform, moveTextTransform, finishTextTransform } = useSketchTextEditor({ commands, selectedIndex, activeTool, strokeColor, selectionCursor, textEditor, textValue, clone, pushHistory, announce, render, selectCommand: (...args) => controls.selectCommand(...args), normalizePoint, pixelPoint, eventPoint, getStageSize: () => stageSize, getContext: () => committedContext, input: textInput });
-controls = useSketchControls({ state: { activeTool, activeShape, strokeColor, strokeSize, commands, selectedIndex, activePopover, controlsOutside, canvasRatio, textEditor, selectionCursor, selectedCommand }, clone, pushHistory, render, resizeCanvases, announce, commitText });
+controls = useSketchControls({ state: { activeTool, activeShape, strokeColor, strokeSize, commands, selectedIndex, activePopover, controlsOutside, canvasRatio, textEditor, selectionCursor, selectedCommand }, clone, pushHistory, render, resizeCanvases, announce, commitText, onRatioChange: selectCanvasRatioWithFit });
 const { selectTool, toggleShapeMenu, toggleControlsOutside, toggleRatioMenu, selectCanvasRatio, selectShape, selectCommand, setStrokeSize, setStrokeColor } = controls;
 const { commandBounds, geometryBounds, selectionBounds, findResizeHandle, resizeBounds, findCommand, drawSelection } = useSketchSelection({ commands, selectedIndex, pixelPoint, textLayout });
+
+function contentBounds() {
+  if (!commands.value.length) return null;
+  const bounds = commands.value.map(commandBounds);
+  const left = Math.min(...bounds.map((item) => item.x));
+  const top = Math.min(...bounds.map((item) => item.y));
+  const right = Math.max(...bounds.map((item) => item.x + item.width));
+  const bottom = Math.max(...bounds.map((item) => item.y + item.height));
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+function waitForCanvasTransition() {
+  return new Promise((resolve) => {
+    const element = dialog.value;
+    if (!element) { resolve(); return; }
+    let timer;
+    const finish = () => {
+      clearTimeout(timer);
+      element.removeEventListener("transitionend", onTransitionEnd);
+      resolve();
+    };
+    const onTransitionEnd = (event) => {
+      if (event.target === element && ["width", "aspect-ratio"].includes(event.propertyName)) finish();
+    };
+    element.addEventListener("transitionend", onTransitionEnd);
+    timer = setTimeout(finish, 240);
+  });
+}
+
+async function selectCanvasRatioWithFit(ratio) {
+  if (ratio === canvasRatio.value) return;
+  const previousSize = { ...stageSize };
+  const bounds = contentBounds();
+  canvasRatio.value = ratio;
+  closePopover();
+  await nextTick();
+  await waitForCanvasTransition();
+  resizeCanvases();
+  fitContentToCanvas(commands.value, previousSize, stageSize, bounds);
+  selectedIndex.value = -1;
+  render();
+  announce(`画布比例 ${ratio}`);
+}
+
+async function toggleInterfaceFullscreen() {
+  const previousSize = { ...stageSize };
+  const bounds = contentBounds();
+  interfaceFullscreen.value = !interfaceFullscreen.value;
+  closePopover();
+  await nextTick();
+  await waitForCanvasTransition();
+  resizeCanvases();
+  fitContentToCanvas(commands.value, previousSize, stageSize, bounds);
+  selectedIndex.value = -1;
+  render();
+}
+
+async function toggleBrowserFullscreen() {
+  try {
+    browserFullscreenTransition = { size: { ...stageSize }, bounds: contentBounds() };
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await document.documentElement.requestFullscreen();
+  } catch {
+    announce("当前环境不支持浏览器全屏");
+  }
+}
+
+async function syncBrowserFullscreen() {
+  browserFullscreen.value = Boolean(document.fullscreenElement);
+  if (!browserFullscreenTransition) return;
+  const transition = browserFullscreenTransition;
+  browserFullscreenTransition = null;
+  await nextTick();
+  await waitForCanvasTransition();
+  resizeCanvases();
+  fitContentToCanvas(commands.value, transition.size, stageSize, transition.bounds);
+  selectedIndex.value = -1;
+  render();
+}
 
 function announce(message) {
   statusMessage.value = "";
@@ -445,6 +530,7 @@ onMounted(() => {
   });
   resizeObserver.observe(stage.value);
   window.addEventListener("resize", updateViewport);
+  document.addEventListener("fullscreenchange", syncBrowserFullscreen);
   if (props.modelValue) {
     nextTick(() => {
       resizeCanvases();
@@ -457,15 +543,16 @@ onBeforeUnmount(() => {
   resizeObserver?.disconnect();
   clearTimeout(copyFeedbackTimer);
   window.removeEventListener("resize", updateViewport);
+  document.removeEventListener("fullscreenchange", syncBrowserFullscreen);
 });
 </script>
 
 <template>
   <Teleport to="body">
-    <div v-show="modelValue" class="sketch-modal">
+    <div v-show="modelValue" class="sketch-modal" :class="{ 'is-interface-fullscreen': interfaceFullscreen }">
       <div class="sketch-backdrop"></div>
       <div ref="dialog" class="sketch-dialog" :style="dialogStyle" role="dialog" aria-modal="true" aria-labelledby="sketch-dialog-title" tabindex="-1" @keydown="onKeydown">
-      <section class="sketch-editor" :class="{ 'is-controls-outside': controlsOutside }">
+      <section class="sketch-editor" :class="{ 'is-controls-outside': effectiveControlsOutside }">
         <h2 id="sketch-dialog-title" class="sr-only">画板</h2>
         <div id="sketch-popover-host"></div>
 
@@ -477,8 +564,11 @@ onBeforeUnmount(() => {
           :can-redo="canRedo"
           :can-copy="hasContent"
           :copy-succeeded="copySucceeded"
+          :is-fullscreen="isFullscreen"
+          :is-browser-fullscreen="browserFullscreen"
+          :is-interface-fullscreen="interfaceFullscreen"
           :has-content="hasContent"
-          :controls-outside="controlsOutside"
+          :controls-outside="effectiveControlsOutside"
           @close="closeDialog"
           @select-tool="selectTool"
           @toggle-shapes="toggleShapeMenu"
@@ -489,6 +579,8 @@ onBeforeUnmount(() => {
           @clear="requestClearCanvas"
           @toggle-controls="toggleControlsOutside"
           @toggle-ratio="toggleRatioMenu"
+          @toggle-browser-fullscreen="toggleBrowserFullscreen"
+          @toggle-interface-fullscreen="toggleInterfaceFullscreen"
           @close-popover="closePopover"
         />
 
@@ -529,8 +621,8 @@ onBeforeUnmount(() => {
 
           </div>
         </div>
-        <ColorPalette :model-value="strokeColor" :disabled="!hasContent" :outside="controlsOutside" @update:model-value="setStrokeColor" @finish="finishSketch" />
-        <StrokeSizeControl :model-value="strokeSize" :outside="controlsOutside" @update:model-value="setStrokeSize" />
+        <ColorPalette :model-value="strokeColor" :disabled="!hasContent" :outside="effectiveControlsOutside" @update:model-value="setStrokeColor" @finish="finishSketch" />
+        <StrokeSizeControl :model-value="strokeSize" :outside="effectiveControlsOutside" @update:model-value="setStrokeSize" />
         <div class="sr-only" aria-live="polite">{{ statusMessage }}</div>
       </section>
       </div>
@@ -552,6 +644,23 @@ onBeforeUnmount(() => {
   inset: 0;
   background: var(--sketch-color-backdrop);
   backdrop-filter: blur(3px);
+}
+
+.sketch-modal.is-interface-fullscreen {
+  place-items: stretch;
+}
+
+.sketch-modal.is-interface-fullscreen .sketch-backdrop {
+  display: none;
+}
+
+.sketch-modal.is-interface-fullscreen .sketch-dialog {
+  width: 100vw;
+  height: 100dvh;
+  aspect-ratio: auto;
+  border-radius: 0;
+  box-shadow: none;
+  transform: none;
 }
 
 .sketch-dialog {

@@ -1,5 +1,5 @@
 <script setup>
-import { BrushCleaning, Check, ChevronsDown, ChevronsUp, Copy, Eraser, MousePointer2, Ratio, Redo2, Type, Undo2, X } from "@lucide/vue";
+import { BrushCleaning, Check, ChevronsDown, ChevronsUp, Copy, Eraser, Fullscreen, Maximize2, Minimize, Minimize2, MousePointer2, Ratio, Redo2, Type, Undo2, X } from "@lucide/vue";
 import { ref } from "vue";
 import ShapePicker from "./ShapePicker.vue";
 import MoveControlsIcon from "./MoveControlsIcon.vue";
@@ -19,6 +19,9 @@ defineProps({
   canRedo: Boolean,
   canCopy: Boolean,
   copySucceeded: Boolean,
+  isFullscreen: Boolean,
+  isBrowserFullscreen: Boolean,
+  isInterfaceFullscreen: Boolean,
   hasContent: Boolean,
   controlsOutside: Boolean,
 });
@@ -34,6 +37,8 @@ const emit = defineEmits([
   "clear",
   "toggle-controls",
   "toggle-ratio",
+  "toggle-browser-fullscreen",
+  "toggle-interface-fullscreen",
   "close-popover",
 ]);
 
@@ -121,15 +126,23 @@ const tools = [
           <button class="more-toggle" type="button" title="收起画布设置" aria-label="收起画布设置" @click="toggleMore">
             <ChevronsUp :size="20" aria-hidden="true" />
           </button>
-          <button type="button" role="menuitem" title="画布比例" aria-label="画布比例" @click="selectMoreAction($event, 'toggle-ratio')">
+          <button type="button" role="menuitem" title="画布比例" aria-label="画布比例" :disabled="isFullscreen" @click="selectMoreAction($event, 'toggle-ratio')">
             <Ratio :size="18" aria-hidden="true" />
           </button>
-          <button type="button" role="menuitem" :title="controlsOutside ? '操作区移回画布内' : '操作区移到画布外'" :aria-label="controlsOutside ? '操作区移回画布内' : '操作区移到画布外'" @click="selectMoreAction($event, 'toggle-controls')">
+          <button type="button" role="menuitem" :title="controlsOutside ? '操作区移回画布内' : '操作区移到画布外'" :aria-label="controlsOutside ? '操作区移回画布内' : '操作区移到画布外'" :disabled="isFullscreen" @click="selectMoreAction($event, 'toggle-controls')">
             <MoveControlsIcon :outside="controlsOutside" />
           </button>
           <button class="copy-action" :class="{ 'is-success': copySucceeded }" type="button" role="menuitem" title="复制 PNG 图片" aria-label="复制 PNG 图片" :aria-disabled="copySucceeded" :disabled="!canCopy" @click="!copySucceeded && selectMoreAction($event, 'copy')">
             <Check v-if="copySucceeded" :size="18" aria-hidden="true" />
             <Copy v-else :size="18" aria-hidden="true" />
+          </button>
+          <button type="button" role="menuitem" :title="isBrowserFullscreen ? '退出浏览器全屏' : '浏览器全屏'" :aria-label="isBrowserFullscreen ? '退出浏览器全屏' : '浏览器全屏'" @click="emit('toggle-browser-fullscreen')">
+            <Minimize v-if="isBrowserFullscreen" :size="18" aria-hidden="true" />
+            <Fullscreen v-else :size="18" aria-hidden="true" />
+          </button>
+          <button type="button" role="menuitem" :title="isInterfaceFullscreen ? '退出界面全屏' : '界面全屏'" :aria-label="isInterfaceFullscreen ? '退出界面全屏' : '界面全屏'" @click="emit('toggle-interface-fullscreen')">
+            <Minimize2 v-if="isInterfaceFullscreen" :size="18" aria-hidden="true" />
+            <Maximize2 v-else :size="18" aria-hidden="true" />
           </button>
         </div>
       </div>
