@@ -17,9 +17,9 @@
   --sketch-color-focus: #ffffff;
   --sketch-color-selection: #6dd8b7;
   --sketch-color-backdrop: rgba(0, 0, 0, 0.72);
-  --sketch-slider-track: rgba(255, 255, 255, 0.22);
+  --sketch-slider-track: rgb(172 172 172 / 60%);
   --sketch-slider-track-hover: #707070;
-  --sketch-slider-scale: rgba(255, 255, 255, 0.28);
+  --sketch-slider-scale: rgb(172 172 172 / 60%);
   --sketch-slider-thumb: #ffffff;
   --sketch-slider-thumb-hover: rgba(255, 255, 255, 0.1);
 
