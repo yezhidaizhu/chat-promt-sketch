@@ -41,7 +41,7 @@ const isCustom = computed(() => !colors.some((color) => color.value === props.mo
         title="选择自定义颜色"
         aria-label="选择自定义颜色"
       >
-        <input :value="modelValue" type="color" @input="emit('update:modelValue', $event.target.value)" />
+        <input :value="modelValue" type="color" @change="emit('update:modelValue', $event.target.value)" />
       </label>
       <button
         v-for="color in colors"

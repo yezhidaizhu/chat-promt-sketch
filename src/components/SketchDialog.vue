@@ -42,13 +42,18 @@ let textTransform = null;
 let resizeObserver;
 
 const textEditorPadding = 6;
-const textEditorMinWidth = 64;
+const textEditorMinWidth = 96;
+const textEditorDefaultWidth = 240;
+const textLineHeight = 1.25;
+const textMinSize = 12;
+const textMaxSize = 160;
 
 const toolLabels = { select: "选择并移动", pen: "画笔", text: "文字", eraser: "橡皮擦" };
 
 const canUndo = computed(() => undoStack.value.length > 0);
 const canRedo = computed(() => redoStack.value.length > 0);
 const hasContent = computed(() => commands.value.length > 0);
+const selectedCommand = computed(() => commands.value[selectedIndex.value] || null);
 const canvasCursor = computed(() => {
   if (activeTool.value === "select") return selectionCursor.value;
   if (activeTool.value === "text") return "text";
@@ -67,7 +72,7 @@ const textEditorStyle = computed(() => {
   if (!textEditor.value) return {};
   const command = commands.value[textEditor.value.index];
   if (!command) return {};
-  const bounds = draftTextBounds(command);
+  const bounds = textEditorBounds(command);
   return {
     left: `${bounds.x}px`,
     top: `${bounds.y}px`,
@@ -75,6 +80,7 @@ const textEditorStyle = computed(() => {
     height: `${bounds.height}px`,
     color: command.color,
     fontSize: `${command.size}px`,
+    lineHeight: textLineHeight,
   };
 });
 
@@ -241,45 +247,80 @@ function drawCommand(context, command, preview = false) {
     return;
   }
   if (command.type === "text") {
-    if (command.editing) return;
+    if (textEditor.value?.index === commands.value.indexOf(command)) return;
     const point = pixelPoint(command);
+    const layout = textLayout(command);
     context.save();
     context.fillStyle = command.color;
     context.font = `600 ${command.size}px Inter, sans-serif`;
     context.textBaseline = "top";
-    context.fillText(command.text, point.x, point.y);
+    layout.lines.forEach((line, index) => {
+      context.fillText(line, point.x, point.y + index * layout.lineHeight, layout.width);
+    });
     context.restore();
   }
 }
 
-function measureTextSize(command, text = command.text) {
-  if (!committedContext) return { width: Math.max(64, text.length * command.size * 0.6), height: command.size * 1.25 };
+function measureTextWidth(command, text) {
+  if (!committedContext) return Array.from(text).length * command.size * 0.6;
   committedContext.save();
   committedContext.font = `600 ${command.size}px Inter, sans-serif`;
   const width = committedContext.measureText(text).width;
   committedContext.restore();
-  return { width, height: command.size * 1.25 };
+  return width;
 }
 
-function draftTextBounds(command) {
+function wrapText(command, text, width) {
+  const lines = [];
+  text.split("\n").forEach((paragraph) => {
+    if (!paragraph) {
+      lines.push("");
+      return;
+    }
+    let line = "";
+    Array.from(paragraph).forEach((character) => {
+      const candidate = line + character;
+      if (line && measureTextWidth(command, candidate) > width) {
+        lines.push(line);
+        line = character;
+      } else {
+        line = candidate;
+      }
+    });
+    lines.push(line);
+  });
+  return lines.length ? lines : [""];
+}
+
+function textLayout(command, text = command.text) {
+  const naturalWidth = Math.max(
+    textEditorMinWidth,
+    ...text.split("\n").map((line) => measureTextWidth(command, line || " ")),
+  );
+  const width = command.width
+    ? Math.max(textEditorMinWidth, command.width * stageSize.width)
+    : naturalWidth;
+  const lines = command.width ? wrapText(command, text, width) : text.split("\n");
+  const lineHeight = command.size * textLineHeight;
+  return { width, height: Math.max(lineHeight, lines.length * lineHeight), lineHeight, lines };
+}
+
+function textEditorBounds(command) {
   const point = pixelPoint(command);
-  const metrics = measureTextSize(command);
-  const contentWidth = command.text
-    ? metrics.width
-    : Math.max(textEditorMinWidth, command.size * 1.2);
+  const layout = textLayout(command, textValue.value);
   return {
     x: point.x - textEditorPadding,
     y: point.y - textEditorPadding,
-    width: contentWidth + textEditorPadding * 2,
-    height: metrics.height + textEditorPadding * 2,
+    width: layout.width + textEditorPadding * 2,
+    height: layout.height + textEditorPadding * 2,
   };
 }
 
 function commandBounds(command) {
   if (command.type === "text") {
     const point = pixelPoint(command);
-    const metrics = measureTextSize(command);
-    return { x: point.x, y: point.y, width: metrics.width, height: metrics.height };
+    const layout = textLayout(command);
+    return { x: point.x, y: point.y, width: layout.width, height: layout.height };
   }
 
   const normalizedPoints = command.type === "shape" ? [command.start, command.end] : command.points;
@@ -354,10 +395,11 @@ function selectionHandles(command) {
   ];
 }
 
-function findResizeHandle(point) {
+function findResizeHandle(point, pointerType = "mouse") {
   const command = commands.value[selectedIndex.value];
   if (!command) return null;
-  return selectionHandles(command).find((handle) => Math.hypot(point.x - handle.x, point.y - handle.y) <= 10) || null;
+  const hitRadius = pointerType === "touch" ? 22 : 12;
+  return selectionHandles(command).find((handle) => Math.hypot(point.x - handle.x, point.y - handle.y) <= hitRadius) || null;
 }
 
 function resizeCursor(handle) {
@@ -381,16 +423,6 @@ function resizeBounds(bounds, handleId, point) {
   return { x: left, y: top, width: right - left, height: bottom - top };
 }
 
-function anchoredBounds(originalBounds, handleId, width, height) {
-  let x = originalBounds.x + (originalBounds.width - width) / 2;
-  let y = originalBounds.y + (originalBounds.height - height) / 2;
-  if (handleId.includes("w")) x = originalBounds.x + originalBounds.width - width;
-  if (handleId.includes("e")) x = originalBounds.x;
-  if (handleId.includes("n")) y = originalBounds.y + originalBounds.height - height;
-  if (handleId.includes("s")) y = originalBounds.y;
-  return { x, y, width, height };
-}
-
 function drawSelection() {
   const command = commands.value[selectedIndex.value];
   if (!command) return;
@@ -408,7 +440,7 @@ function drawSelection() {
     liveContext.strokeStyle = "#2c67c5";
     liveContext.lineWidth = 2;
     liveContext.beginPath();
-    liveContext.rect(handle.x - 4, handle.y - 4, 8, 8);
+    liveContext.rect(handle.x - 5, handle.y - 5, 10, 10);
     liveContext.fill();
     liveContext.stroke();
   });
@@ -420,7 +452,7 @@ function clearContext(context, canvas) {
 }
 
 function render() {
-  if (!committedContext || !liveContext) return;
+  if (!committedContext || !liveContext || !committedCanvas.value || !liveCanvas.value) return;
   clearContext(committedContext, committedCanvas.value);
   clearContext(liveContext, liveCanvas.value);
   commands.value.forEach((command) => drawCommand(committedContext, command));
@@ -462,6 +494,7 @@ function pushHistory(previous) {
 }
 
 function selectTool(tool) {
+  if (textEditor.value) commitText();
   activeTool.value = tool;
   selectedIndex.value = -1;
   selectionCursor.value = "default";
@@ -471,6 +504,7 @@ function selectTool(tool) {
 }
 
 function toggleShapeMenu() {
+  if (textEditor.value) commitText();
   activeTool.value = "shape";
   selectedIndex.value = -1;
   shapeMenuOpen.value = !shapeMenuOpen.value;
@@ -482,6 +516,23 @@ function selectShape(shape) {
   activeTool.value = "shape";
   shapeMenuOpen.value = false;
   announce(`${shape.label}已选择`);
+}
+
+function selectCommand(index) {
+  selectedIndex.value = index;
+  const command = commands.value[index];
+  if (command?.color) strokeColor.value = command.color;
+}
+
+function setStrokeColor(color) {
+  if (!color || color === strokeColor.value && selectedCommand.value?.color === color) return;
+  strokeColor.value = color;
+  const command = selectedCommand.value;
+  if (!command || command.type === "eraser" || command.color === color) return;
+  const previous = clone();
+  command.color = color;
+  pushHistory(previous);
+  announce("对象颜色已更新");
 }
 
 function findCommand(point) {
@@ -519,25 +570,31 @@ function resizeTextCommand(command, point, state) {
   const handle = state.handle;
   const originalBounds = state.originalBounds;
   const targetBounds = resizeBounds(originalBounds, handle.id, point);
-  const widthRatio = Math.abs(targetBounds.width) / Math.max(originalBounds.width, 1);
-  const heightRatio = Math.abs(targetBounds.height) / Math.max(originalBounds.height, 1);
-  const scale = ["e", "w"].includes(handle.id)
-    ? widthRatio
-    : ["n", "s"].includes(handle.id)
-      ? heightRatio
-      : Math.max(widthRatio, heightRatio);
-  command.size = Math.round(Math.min(160, Math.max(12, state.originalCommand.size * scale)));
-
-  const metrics = measureTextSize(command);
   const padding = state.draft ? textEditorPadding : 0;
-  const contentWidth = state.draft && !command.text
-    ? Math.max(textEditorMinWidth, command.size * 1.2)
-    : metrics.width;
-  const width = contentWidth + padding * 2;
-  const height = metrics.height + padding * 2;
-  const positioned = anchoredBounds(originalBounds, handle.id, width, height);
-  command.x = (positioned.x + padding) / stageSize.width;
-  command.y = (positioned.y + padding) / stageSize.height;
+  const horizontal = /[ew]/.test(handle.id);
+  const vertical = /[ns]/.test(handle.id);
+
+  if (horizontal) {
+    const contentWidth = Math.max(textEditorMinWidth, Math.abs(targetBounds.width) - padding * 2);
+    command.width = contentWidth / stageSize.width;
+    const x = handle.id.includes("w")
+      ? originalBounds.x + originalBounds.width - contentWidth - padding
+      : originalBounds.x + padding;
+    command.x = x / stageSize.width;
+  }
+
+  if (vertical) {
+    const originalHeight = Math.max(originalBounds.height - padding * 2, 1);
+    const targetHeight = Math.max(command.size * textLineHeight, Math.abs(targetBounds.height) - padding * 2);
+    command.size = Math.round(Math.min(textMaxSize, Math.max(textMinSize, state.originalCommand.size * targetHeight / originalHeight)));
+  }
+
+  if (handle.id.includes("n")) {
+    const height = textLayout(command, command.text).height;
+    command.y = (originalBounds.y + originalBounds.height - height - padding) / stageSize.height;
+  } else {
+    command.y = (originalBounds.y + padding) / stageSize.height;
+  }
 }
 
 function resizeCommand(command, point) {
@@ -608,48 +665,71 @@ function startText(point) {
     x: normalized.x,
     y: normalized.y,
     color: strokeColor.value,
-    size: Math.max(18, strokeSize.value * 3),
-    editing: true,
+    size: 32,
+    width: Math.min(textEditorDefaultWidth, Math.max(textEditorMinWidth, stageSize.width - point.x - 24)) / stageSize.width,
   });
-  selectedIndex.value = commands.value.length - 1;
-  textEditor.value = { index: selectedIndex.value, previous };
-  textValue.value = "";
+  beginTextEdit(commands.value.length - 1, previous, true);
+}
+
+function beginTextEdit(index, previous = clone(), isNew = false) {
+  const command = commands.value[index];
+  if (command?.type !== "text") return;
+  if (!command.width) {
+    command.width = Math.min(textEditorDefaultWidth, textLayout(command).width) / stageSize.width;
+  }
+  selectCommand(index);
+  textEditor.value = { index, previous, isNew };
+  textValue.value = command.text;
   render();
-  nextTick(() => textInput.value?.focus());
+  nextTick(() => {
+    textInput.value?.focus();
+    textInput.value?.setSelectionRange(textValue.value.length, textValue.value.length);
+  });
 }
 
 function commitText() {
   if (!textEditor.value) return;
   const editor = textEditor.value;
   const command = commands.value[editor.index];
-  const text = textValue.value.trim();
+  const text = textValue.value.replace(/\r/g, "").trimEnd();
   textEditor.value = null;
   if (!command) {
     selectedIndex.value = -1;
     render();
     return;
   }
-  if (!text) {
-    commands.value = editor.previous;
-    selectedIndex.value = -1;
-    render();
+  if (!text.trim()) {
+    if (editor.isNew) {
+      commands.value = editor.previous;
+      selectedIndex.value = -1;
+      render();
+    } else {
+      commands.value.splice(editor.index, 1);
+      selectedIndex.value = -1;
+      pushHistory(editor.previous);
+      announce("文字已删除");
+    }
     return;
   }
   command.text = text;
-  command.editing = false;
   activeTool.value = "select";
   selectedIndex.value = editor.index;
   selectionCursor.value = "move";
-  pushHistory(editor.previous);
-  announce("文字已添加");
+  if (JSON.stringify(editor.previous) !== JSON.stringify(commands.value)) {
+    pushHistory(editor.previous);
+    announce(editor.isNew ? "文字已添加" : "文字已更新");
+  } else {
+    render();
+  }
 }
 
 function cancelText() {
   if (!textEditor.value) return;
-  commands.value = textEditor.value.previous;
+  const editor = textEditor.value;
+  commands.value = editor.previous;
   textEditor.value = null;
   textValue.value = "";
-  selectedIndex.value = -1;
+  selectedIndex.value = editor.isNew ? -1 : Math.min(editor.index, commands.value.length - 1);
   render();
   liveCanvas.value?.focus();
 }
@@ -660,7 +740,7 @@ function startTextTransform(event, type, handleId = null) {
   if (!command) return;
   const point = eventPoint(event);
   const handle = handleId ? { id: handleId } : null;
-  const bounds = draftTextBounds(command);
+  const bounds = textEditorBounds(command);
   textTransform = {
     type,
     handle,
@@ -706,7 +786,7 @@ function onPointerDown(event) {
   }
 
   if (activeTool.value === "select") {
-    const resizeHandle = findResizeHandle(point);
+    const resizeHandle = findResizeHandle(point, event.pointerType);
     if (resizeHandle) {
       const command = commands.value[selectedIndex.value];
       gesture = {
@@ -723,7 +803,7 @@ function onPointerDown(event) {
       return;
     }
 
-    selectedIndex.value = findCommand(point);
+    selectCommand(findCommand(point));
     gesture = selectedIndex.value >= 0
       ? { type: "move", last: normalizePoint(point), previous: clone(), moved: false }
       : null;
@@ -757,12 +837,21 @@ function onPointerDown(event) {
   };
 }
 
+function onCanvasDoubleClick(event) {
+  if (activeTool.value !== "select") return;
+  const index = findCommand(eventPoint(event));
+  if (commands.value[index]?.type !== "text") return;
+  event.preventDefault();
+  gesture = null;
+  beginTextEdit(index);
+}
+
 function onPointerMove(event) {
   const point = eventPoint(event);
   updatePointerCursor(point);
   if (!gesture) {
     if (activeTool.value === "select") {
-      const handle = findResizeHandle(point);
+      const handle = findResizeHandle(point, event.pointerType);
       selectionCursor.value = handle ? resizeCursor(handle) : findCommand(point) >= 0 ? "move" : "default";
     }
     return;
@@ -928,6 +1017,31 @@ function onKeydown(event) {
     event.preventDefault();
     event.shiftKey ? redo() : undo();
   }
+  if (event.key === "Escape" && selectedIndex.value >= 0) {
+    selectedIndex.value = -1;
+    selectionCursor.value = "default";
+    render();
+    return;
+  }
+  if (event.key === "Enter" && selectedCommand.value?.type === "text") {
+    event.preventDefault();
+    beginTextEdit(selectedIndex.value);
+    return;
+  }
+  if (["ArrowUp", "ArrowRight", "ArrowDown", "ArrowLeft"].includes(event.key) && selectedIndex.value >= 0) {
+    event.preventDefault();
+    const previous = clone();
+    const distance = event.shiftKey ? 10 : 1;
+    const offsets = {
+      ArrowUp: [0, -distance / stageSize.height],
+      ArrowRight: [distance / stageSize.width, 0],
+      ArrowDown: [0, distance / stageSize.height],
+      ArrowLeft: [-distance / stageSize.width, 0],
+    };
+    translateCommand(selectedCommand.value, ...offsets[event.key]);
+    pushHistory(previous);
+    return;
+  }
   if (["Backspace", "Delete"].includes(event.key) && selectedIndex.value >= 0) {
     event.preventDefault();
     const previous = clone();
@@ -1024,6 +1138,7 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
             @pointercancel="(event) => finishPointer(event, true)"
             @pointerenter="updatePointerCursor(eventPoint($event))"
             @pointerleave="onCanvasLeave"
+            @dblclick="onCanvasDoubleClick"
           ></canvas>
 
           <span class="brush-cursor" :style="pointerCursorStyle" aria-hidden="true"></span>
@@ -1038,18 +1153,19 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
             @pointerup.prevent="finishTextTransform"
             @pointercancel.prevent="finishTextTransform"
           >
-            <input
+            <textarea
               ref="textInput"
               v-model="textValue"
               class="canvas-text-input"
-              type="text"
-              maxlength="80"
+              maxlength="500"
               aria-label="输入画布文字"
+              spellcheck="false"
               @pointerdown.stop
-              @keydown.enter.prevent="$event.currentTarget.blur()"
+              @keydown.meta.enter.prevent="$event.currentTarget.blur()"
+              @keydown.ctrl.enter.prevent="$event.currentTarget.blur()"
               @keydown.esc.stop.prevent="cancelText"
               @blur="commitText"
-            />
+            ></textarea>
             <button
               v-for="handle in ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']"
               :key="handle"
@@ -1066,7 +1182,7 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
           </div>
 
           <StrokeSizeControl v-model="strokeSize" />
-          <ColorPalette v-model="strokeColor" :disabled="!hasContent" @finish="finishSketch" />
+          <ColorPalette :model-value="strokeColor" :disabled="!hasContent" @update:model-value="setStrokeColor" @finish="finishSketch" />
 
           <div class="sr-only" aria-live="polite">{{ statusMessage }}</div>
         </div>
@@ -1141,9 +1257,9 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
 .brush-cursor {
   position: absolute;
   z-index: calc(var(--sketch-z-controls) - 1);
-  border: 1px solid rgba(0, 0, 0, 0.42);
+  border: 1px solid rgba(0, 0, 0);
   border-radius: 50%;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255);
   pointer-events: none;
   transform: translate(-50%, -50%);
   transition: opacity 80ms ease;
@@ -1152,7 +1268,7 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
 .canvas-text-editor {
   position: absolute;
   z-index: var(--sketch-z-popover);
-  padding: 5px;
+  padding: 6px;
   border: 1.5px dashed #2c67c5;
   background: transparent;
   cursor: move;
@@ -1160,19 +1276,25 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
 }
 
 .canvas-text-input {
+  display: block;
   width: 100%;
   height: 100%;
   min-width: 0;
   padding: 0;
+  overflow: hidden;
   border: 0;
   outline: 0;
   background: transparent;
   color: inherit;
+  font-family: Inter, sans-serif;
   font-size: inherit;
   font-weight: 600;
   line-height: 1.25;
   cursor: text;
+  resize: none;
   user-select: text;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .canvas-text-input:focus-visible {
@@ -1181,27 +1303,27 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
 
 .text-resize-handle {
   position: absolute;
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   padding: 0;
   border: 2px solid #2c67c5;
   background: #ffffff;
 }
 
 .text-resize-handle.is-nw {
-  top: -5px;
-  left: -5px;
+  top: -6px;
+  left: -6px;
   cursor: nwse-resize;
 }
 
 .text-resize-handle.is-ne {
-  top: -5px;
-  right: -5px;
+  top: -6px;
+  right: -6px;
   cursor: nesw-resize;
 }
 
 .text-resize-handle.is-n {
-  top: -5px;
+  top: -6px;
   left: 50%;
   cursor: ns-resize;
   transform: translateX(-50%);
@@ -1209,25 +1331,25 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
 
 .text-resize-handle.is-e {
   top: 50%;
-  right: -5px;
+  right: -6px;
   cursor: ew-resize;
   transform: translateY(-50%);
 }
 
 .text-resize-handle.is-se {
-  right: -5px;
-  bottom: -5px;
+  right: -6px;
+  bottom: -6px;
   cursor: nwse-resize;
 }
 
 .text-resize-handle.is-sw {
-  bottom: -5px;
-  left: -5px;
+  bottom: -6px;
+  left: -6px;
   cursor: nesw-resize;
 }
 
 .text-resize-handle.is-s {
-  bottom: -5px;
+  bottom: -6px;
   left: 50%;
   cursor: ns-resize;
   transform: translateX(-50%);
@@ -1235,7 +1357,7 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
 
 .text-resize-handle.is-w {
   top: 50%;
-  left: -5px;
+  left: -6px;
   cursor: ew-resize;
   transform: translateY(-50%);
 }
