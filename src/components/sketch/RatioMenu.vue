@@ -1,0 +1,34 @@
+<script setup>
+defineProps({ current: { type: String, required: true } });
+const emit = defineEmits(["select"]);
+const ratios = [
+  { id: "1:1", label: "正方形", width: 1, height: 1 }, { id: "4:3", label: "标准横向", width: 4, height: 3 },
+  { id: "16:9", label: "宽屏横向", width: 16, height: 9 }, { id: "3:4", label: "标准纵向", width: 3, height: 4 },
+  { id: "9:16", label: "宽屏纵向", width: 9, height: 16 }, { id: "3:2", label: "照片横向", width: 3, height: 2 },
+];
+
+function previewStyle(item) {
+  const ratio = item.width / item.height;
+  const width = Math.min(28, 25 * ratio);
+  const height = Math.min(25, 28 / ratio);
+  return { width: `${width}px`, height: `${height}px` };
+}
+</script>
+
+<template>
+  <div class="ratio-menu" aria-label="选择画布比例">
+    <button v-for="item in ratios" :key="item.id" class="ratio-option" :class="{ 'is-active': current === item.id }" type="button" role="menuitemradio" :aria-label="`${item.label} ${item.id}`" :aria-checked="current === item.id" @click="emit('select', item.id)">
+      <span class="ratio-preview" :style="previewStyle(item)" aria-hidden="true"></span>
+      <span class="ratio-label">{{ item.id }}</span>
+    </button>
+  </div>
+</template>
+
+<style scoped>
+.ratio-menu { display: grid; width: 176px; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.ratio-option { display: flex; min-width: 0; min-height: 54px; align-items: center; justify-content: center; gap: 5px; padding: 6px 3px; border: 0; border-radius: var(--sketch-radius-sm); background: transparent; color: var(--sketch-color-text-muted); cursor: pointer; flex-direction: column; }
+.ratio-option:hover, .ratio-option.is-active { background: var(--sketch-color-control-hover); color: var(--sketch-color-text); }
+.ratio-option:focus-visible { outline: 2px solid var(--sketch-color-focus); outline-offset: 2px; }
+.ratio-preview { display: block; flex: 0 0 auto; border: 1.5px solid currentColor; border-radius: 2px; }
+.ratio-label { font-size: 11px; font-weight: 650; line-height: 1; }
+</style>

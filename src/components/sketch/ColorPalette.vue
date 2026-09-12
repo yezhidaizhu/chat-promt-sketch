@@ -8,6 +8,7 @@ const props = defineProps({
     required: true,
   },
   disabled: Boolean,
+  outside: Boolean,
 });
 
 const emit = defineEmits(["update:modelValue", "finish"]);
@@ -32,7 +33,7 @@ const isCustom = computed(() => !colors.some((color) => color.value === props.mo
 </script>
 
 <template>
-  <div class="bottom-controls">
+  <div class="bottom-controls" :class="{ 'is-outside': outside }">
     <fieldset class="color-palette" aria-label="墨水颜色">
       <legend class="sr-only">墨水颜色</legend>
       <label
@@ -82,6 +83,11 @@ const isCustom = computed(() => !colors.some((color) => color.value === props.mo
   align-items: center;
   justify-content: center;
   pointer-events: none;
+  transition: bottom var(--sketch-transition-expand);
+}
+
+.bottom-controls.is-outside {
+  bottom: calc(-1 * (36px + var(--sketch-space-3)));
 }
 
 .color-palette {

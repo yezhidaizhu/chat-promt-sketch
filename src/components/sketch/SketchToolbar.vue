@@ -1,6 +1,7 @@
 <script setup>
-import { Eraser, MousePointer2, Pencil, Redo2, Trash2, Type, Undo2, X } from "@lucide/vue";
+import { Eraser, MousePointer2, PanelLeft, Pencil, Redo2, Trash2, Type, Undo2, X } from "@lucide/vue";
 import ShapePicker from "./ShapePicker.vue";
+import RatioPicker from "./RatioPicker.vue";
 
 defineProps({
   activeTool: {
@@ -15,9 +16,26 @@ defineProps({
   canUndo: Boolean,
   canRedo: Boolean,
   hasContent: Boolean,
+  controlsOutside: Boolean,
+  ratio: {
+    type: String,
+    required: true,
+  },
+  ratioMenuOpen: Boolean,
 });
 
-const emit = defineEmits(["close", "select-tool", "toggle-shapes", "select-shape", "undo", "redo", "clear"]);
+const emit = defineEmits([
+  "close",
+  "select-tool",
+  "toggle-shapes",
+  "select-shape",
+  "undo",
+  "redo",
+  "clear",
+  "toggle-controls",
+  "toggle-ratio",
+  "select-ratio",
+]);
 
 const tools = [
   { id: "select", label: "选择并移动", icon: MousePointer2 },
@@ -27,7 +45,7 @@ const tools = [
 </script>
 
 <template>
-  <header class="editor-header">
+  <header class="editor-header" :class="{ 'is-outside': controlsOutside }">
     <button class="icon-button close-button" type="button" title="关闭" aria-label="关闭画板" @click="emit('close')">
       <X :size="21" aria-hidden="true" />
     </button>
@@ -51,7 +69,7 @@ const tools = [
         :active="activeTool === 'shape'"
         :active-shape="activeShape"
         :open="shapeMenuOpen"
-        @toggle="emit('toggle-shapes')"
+        @toggle="emit('toggle-shapes', $event)"
         @select="emit('select-shape', $event)"
       />
 
@@ -69,6 +87,24 @@ const tools = [
     </div>
 
     <div class="action-group" role="group" aria-label="历史">
+      <RatioPicker
+        :active="ratioMenuOpen"
+        :current="ratio"
+        :open="ratioMenuOpen"
+        @toggle="emit('toggle-ratio', $event)"
+        @select="emit('select-ratio', $event)"
+      />
+      <button
+        class="icon-button"
+        type="button"
+        :class="{ 'is-active': controlsOutside }"
+        :title="controlsOutside ? '操作区移回画布内' : '操作区移到画布外'"
+        :aria-label="controlsOutside ? '操作区移回画布内' : '操作区移到画布外'"
+        :aria-pressed="controlsOutside"
+        @click="emit('toggle-controls')"
+      >
+        <PanelLeft :size="19" aria-hidden="true" />
+      </button>
       <button class="icon-button" type="button" title="撤销 (Command/Ctrl+Z)" aria-label="撤销" :disabled="!canUndo" @click="emit('undo')">
         <Undo2 :size="20" aria-hidden="true" />
       </button>
@@ -86,13 +122,18 @@ const tools = [
 .editor-header {
   position: absolute;
   z-index: var(--sketch-z-controls);
-  top: var(--sketch-space-3);
+  top: var(--sketch-space-2);
   right: var(--sketch-space-3);
   left: var(--sketch-space-3);
   display: grid;
   grid-template-columns: 1fr auto 1fr;
-  align-items: start;
+  align-items: center;
   pointer-events: none;
+  transition: top var(--sketch-transition-expand);
+}
+
+.editor-header.is-outside {
+  top: calc(-1 * (var(--sketch-control-size) + var(--sketch-space-1) * 2 + var(--sketch-space-3)));
 }
 
 .editor-header button,
@@ -112,10 +153,11 @@ const tools = [
   border: 1px solid var(--sketch-color-border);
   border-radius: var(--sketch-radius-pill);
   background: var(--sketch-color-control);
-  box-shadow: var(--sketch-shadow-popover);
+  /* box-shadow: var(--sketch-shadow-popover); */
 }
 
 .action-group {
+  position: relative;
   justify-self: end;
   gap: var(--sketch-space-2);
 }
@@ -142,6 +184,11 @@ const tools = [
   color: var(--sketch-color-text);
 }
 
+.icon-button.is-active {
+  background: var(--sketch-color-control-active);
+  color: var(--sketch-color-text);
+}
+
 .tool-button.is-active {
   background: var(--sketch-color-control-active);
   color: var(--sketch-color-text);
@@ -158,12 +205,17 @@ const tools = [
   outline-offset: 2px;
 }
 
+
 @media (max-width: 640px) {
   .editor-header {
     top: var(--sketch-space-2);
     right: var(--sketch-space-2);
     left: var(--sketch-space-2);
     grid-template-columns: 1fr 1fr;
+  }
+
+  .editor-header.is-outside {
+    top: calc(-1 * (var(--sketch-control-size) * 2 + var(--sketch-space-2) + var(--sketch-space-1) * 2 + var(--sketch-space-3)));
   }
 
   .close-button {

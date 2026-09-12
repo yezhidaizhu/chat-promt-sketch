@@ -1,11 +1,11 @@
 <script setup>
-import { Shapes } from "@lucide/vue";
+import { Ratio } from "@lucide/vue";
 
 defineProps({
   active: Boolean,
-  activeShape: {
+  current: {
     type: String,
-    default: "rectangle",
+    required: true,
   },
   open: Boolean,
 });
@@ -14,24 +14,24 @@ const emit = defineEmits(["toggle"]);
 </script>
 
 <template>
-  <div class="shape-picker">
+  <div class="ratio-picker">
     <button
       class="tool-button"
       :class="{ 'is-active': active }"
       type="button"
-      title="形状"
-      aria-label="选择形状"
+      title="画布比例"
+      aria-label="画布比例"
       aria-haspopup="menu"
       :aria-expanded="open"
       @click="emit('toggle', $event.currentTarget)"
     >
-      <Shapes :size="20" aria-hidden="true" />
+      <Ratio :size="20" aria-hidden="true" />
     </button>
   </div>
 </template>
 
 <style scoped>
-.shape-picker {
+.ratio-picker {
   position: relative;
   pointer-events: auto;
 }
@@ -50,18 +50,10 @@ const emit = defineEmits(["toggle"]);
   transition: color var(--sketch-transition-fast), background-color var(--sketch-transition-fast);
 }
 
-.tool-button:hover {
-  background: var(--sketch-color-control-hover);
-  color: var(--sketch-color-text);
-}
-
+.tool-button:hover,
 .tool-button.is-active {
-  background: var(--sketch-color-control-active);
-  color: var(--sketch-color-text);
-}
-
-.tool-button.is-active:hover {
   background: var(--sketch-color-control-hover);
+  color: var(--sketch-color-text);
 }
 
 .tool-button:focus-visible {

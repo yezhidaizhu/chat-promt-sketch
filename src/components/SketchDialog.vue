@@ -4,6 +4,9 @@ import { getStroke } from "perfect-freehand";
 import ColorPalette from "./sketch/ColorPalette.vue";
 import SketchToolbar from "./sketch/SketchToolbar.vue";
 import StrokeSizeControl from "./sketch/StrokeSizeControl.vue";
+import PopoverHost from "./sketch/PopoverHost.vue";
+import ShapeMenu from "./sketch/ShapeMenu.vue";
+import RatioMenu from "./sketch/RatioMenu.vue";
 
 const props = defineProps({
   modelValue: {
@@ -27,12 +30,16 @@ const commands = ref([]);
 const undoStack = ref([]);
 const redoStack = ref([]);
 const selectedIndex = ref(-1);
-const shapeMenuOpen = ref(false);
+const activePopover = ref(null);
+const popoverAnchor = ref(null);
+const controlsOutside = ref(false);
+const canvasRatio = ref("1:1");
 const textEditor = ref(null);
 const textValue = ref("");
 const pointerCursor = ref({ x: 0, y: 0, visible: false });
 const statusMessage = ref("");
 const selectionCursor = ref("default");
+const viewport = ref({ width: window.innerWidth, height: window.innerHeight });
 
 let committedContext;
 let liveContext;
@@ -49,6 +56,27 @@ const textMinSize = 12;
 const textMaxSize = 160;
 
 const toolLabels = { select: "选择并移动", pen: "画笔", text: "文字", eraser: "橡皮擦" };
+const ratioValue = computed(() => {
+  const [width, height] = canvasRatio.value.split(":").map(Number);
+  return width / height;
+});
+const dialogStyle = computed(() => {
+  const style = { "--sketch-ratio": ratioValue.value };
+  if (!controlsOutside.value) return style;
+
+  const canvasWidth = Math.min(
+    760,
+    viewport.value.width - 32,
+    (viewport.value.height - 32) * ratioValue.value,
+  );
+  const canvasHeight = canvasWidth / ratioValue.value;
+  const scale = Math.min(
+    1,
+    (viewport.value.width - 32) / (canvasWidth + 60),
+    (viewport.value.height - 32) / (canvasHeight + 104),
+  );
+  return { ...style, "--sketch-outside-scale": scale };
+});
 
 const canUndo = computed(() => undoStack.value.length > 0);
 const canRedo = computed(() => redoStack.value.length > 0);
@@ -514,23 +542,46 @@ function selectTool(tool) {
   activeTool.value = tool;
   selectedIndex.value = -1;
   selectionCursor.value = "default";
-  shapeMenuOpen.value = false;
+  activePopover.value = null;
   render();
   announce(`${toolLabels[tool] || "形状"}已选择`);
 }
 
-function toggleShapeMenu() {
+function toggleShapeMenu(anchor) {
   if (textEditor.value) commitText();
   activeTool.value = "shape";
   selectedIndex.value = -1;
-  shapeMenuOpen.value = !shapeMenuOpen.value;
+  activePopover.value = activePopover.value === "shape" ? null : "shape";
+  popoverAnchor.value = anchor;
   render();
+}
+
+function toggleControlsOutside() {
+  controlsOutside.value = !controlsOutside.value;
+  activePopover.value = null;
+  nextTick(resizeCanvases);
+}
+
+function updateViewport() {
+  viewport.value = { width: window.innerWidth, height: window.innerHeight };
+}
+
+function toggleRatioMenu(anchor) {
+  activePopover.value = activePopover.value === "ratio" ? null : "ratio";
+  popoverAnchor.value = anchor;
+}
+
+function selectCanvasRatio(ratio) {
+  canvasRatio.value = ratio;
+  activePopover.value = null;
+  nextTick(resizeCanvases);
+  announce(`画布比例 ${ratio}`);
 }
 
 function selectShape(shape) {
   activeShape.value = shape.id;
   activeTool.value = "shape";
-  shapeMenuOpen.value = false;
+  activePopover.value = null;
   announce(`${shape.label}已选择`);
 }
 
@@ -538,6 +589,17 @@ function selectCommand(index) {
   selectedIndex.value = index;
   const command = commands.value[index];
   if (command?.color) strokeColor.value = command.color;
+  if (command && ["shape", "pen"].includes(command.type)) strokeSize.value = command.size;
+}
+
+function setStrokeSize(size) {
+  strokeSize.value = size;
+  const command = selectedCommand.value;
+  if (!command || !["shape", "pen"].includes(command.type) || command.size === size) return;
+  const previous = clone();
+  command.size = size;
+  pushHistory(previous);
+  announce(`对象粗细 ${size} 像素`);
 }
 
 function setStrokeColor(color) {
@@ -840,7 +902,7 @@ function finishTextTransform(event) {
 
 function onPointerDown(event) {
   if (event.button !== undefined && event.button !== 0) return;
-  shapeMenuOpen.value = false;
+  activePopover.value = null;
   const point = eventPoint(event);
   updatePointerCursor(point);
 
@@ -1062,10 +1124,6 @@ function closeDialog() {
   emit("update:modelValue", false);
 }
 
-function onDialogClick(event) {
-  if (event.target === dialog.value) closeDialog();
-}
-
 function onCancel(event) {
   event.preventDefault();
   closeDialog();
@@ -1146,6 +1204,7 @@ onMounted(() => {
     if (dialog.value?.open) resizeCanvases();
   });
   resizeObserver.observe(stage.value);
+  window.addEventListener("resize", updateViewport);
   if (props.modelValue) {
     dialog.value.showModal();
     nextTick(() => {
@@ -1155,7 +1214,10 @@ onMounted(() => {
   }
 });
 
-onBeforeUnmount(() => resizeObserver?.disconnect());
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect();
+  window.removeEventListener("resize", updateViewport);
+});
 </script>
 
 <template>
@@ -1163,21 +1225,24 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
     <dialog
       ref="dialog"
       class="sketch-dialog"
+      :style="dialogStyle"
       aria-labelledby="sketch-dialog-title"
       @cancel="onCancel"
-      @click="onDialogClick"
       @keydown="onKeydown"
     >
-      <section class="sketch-editor">
+      <section class="sketch-editor" :class="{ 'is-controls-outside': controlsOutside }">
         <h2 id="sketch-dialog-title" class="sr-only">画板</h2>
 
         <SketchToolbar
           :active-tool="activeTool"
           :active-shape="activeShape"
-          :shape-menu-open="shapeMenuOpen"
+          :shape-menu-open="activePopover === 'shape'"
           :can-undo="canUndo"
           :can-redo="canRedo"
           :has-content="hasContent"
+          :controls-outside="controlsOutside"
+          :ratio="canvasRatio"
+          :ratio-menu-open="activePopover === 'ratio'"
           @close="closeDialog"
           @select-tool="selectTool"
           @toggle-shapes="toggleShapeMenu"
@@ -1185,25 +1250,34 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
           @undo="undo"
           @redo="redo"
           @clear="clearCanvas"
+          @toggle-controls="toggleControlsOutside"
+          @toggle-ratio="toggleRatioMenu"
+          @select-ratio="selectCanvasRatio"
         />
 
-        <div ref="stage" class="sketch-stage">
-          <canvas ref="committedCanvas" class="committed-canvas" aria-hidden="true"></canvas>
-          <canvas
-            ref="liveCanvas"
-            class="live-canvas"
-            role="application"
-            aria-label="画板，可使用鼠标、触控笔或触摸绘制"
-            tabindex="0"
-            :style="{ cursor: canvasCursor }"
-            @pointerdown="onPointerDown"
-            @pointermove="onPointerMove"
-            @pointerup="finishPointer"
-            @pointercancel="(event) => finishPointer(event, true)"
-            @pointerenter="updatePointerCursor(eventPoint($event))"
-            @pointerleave="onCanvasLeave"
-            @dblclick="onCanvasDoubleClick"
-          ></canvas>
+        <PopoverHost :open="Boolean(activePopover)" :anchor="popoverAnchor" @close="activePopover = null">
+          <ShapeMenu v-if="activePopover === 'shape'" :active-shape="activeShape" @select="selectShape" />
+          <RatioMenu v-else-if="activePopover === 'ratio'" :current="canvasRatio" @select="selectCanvasRatio" />
+        </PopoverHost>
+
+        <div class="sketch-body">
+          <div ref="stage" class="sketch-stage">
+            <canvas ref="committedCanvas" class="committed-canvas" aria-hidden="true"></canvas>
+            <canvas
+              ref="liveCanvas"
+              class="live-canvas"
+              role="application"
+              aria-label="画板，可使用鼠标、触控笔或触摸绘制"
+              tabindex="0"
+              :style="{ cursor: canvasCursor }"
+              @pointerdown="onPointerDown"
+              @pointermove="onPointerMove"
+              @pointerup="finishPointer"
+              @pointercancel="(event) => finishPointer(event, true)"
+              @pointerenter="updatePointerCursor(eventPoint($event))"
+              @pointerleave="onCanvasLeave"
+              @dblclick="onCanvasDoubleClick"
+            ></canvas>
 
           <span class="brush-cursor" :style="pointerCursorStyle" aria-hidden="true"></span>
 
@@ -1245,11 +1319,11 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
             ></button>
           </div>
 
-          <StrokeSizeControl v-model="strokeSize" />
-          <ColorPalette :model-value="strokeColor" :disabled="!hasContent" @update:model-value="setStrokeColor" @finish="finishSketch" />
-
-          <div class="sr-only" aria-live="polite">{{ statusMessage }}</div>
+          </div>
         </div>
+        <ColorPalette :model-value="strokeColor" :disabled="!hasContent" :outside="controlsOutside" @update:model-value="setStrokeColor" @finish="finishSketch" />
+        <StrokeSizeControl :model-value="strokeSize" :outside="controlsOutside" @update:model-value="setStrokeSize" />
+        <div class="sr-only" aria-live="polite">{{ statusMessage }}</div>
       </section>
     </dialog>
   </Teleport>
@@ -1257,17 +1331,20 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
 
 <style scoped>
 .sketch-dialog {
-  width: min(760px, calc(100vw - 32px));
-  height: min(760px, calc(100dvh - 32px));
+  width: min(760px, calc(100vw - 32px), calc((100dvh - 32px) * var(--sketch-ratio)));
+  aspect-ratio: var(--sketch-ratio);
+  height: auto;
   max-width: none;
   max-height: none;
   padding: 0;
   overflow: visible;
   border: 0;
   border-radius: var(--sketch-radius-md);
-  background: var(--sketch-color-surface);
+  background: transparent;
   color: var(--sketch-color-text);
   box-shadow: var(--sketch-shadow-dialog);
+  transform: scale(var(--sketch-outside-scale, 1));
+  transition: width var(--sketch-transition-expand), aspect-ratio var(--sketch-transition-expand), transform var(--sketch-transition-expand);
 }
 
 .sketch-dialog::backdrop {
@@ -1280,6 +1357,7 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
 }
 
 .sketch-editor,
+.sketch-body,
 .sketch-stage {
   position: relative;
   width: 100%;
@@ -1287,8 +1365,15 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
 }
 
 .sketch-editor {
+  overflow: visible;
+  border-radius: inherit;
+}
+
+.sketch-body {
+  display: block;
   overflow: hidden;
   border-radius: inherit;
+  background: var(--sketch-color-surface);
 }
 
 .sketch-stage {
@@ -1429,18 +1514,18 @@ onBeforeUnmount(() => resizeObserver?.disconnect());
 @keyframes dialog-in {
   from {
     opacity: 0;
-    transform: translateY(8px) scale(0.98);
+    transform: translateY(8px) scale(calc(var(--sketch-outside-scale, 1) * 0.98));
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translateY(0) scale(var(--sketch-outside-scale, 1));
   }
 }
 
 @media (max-width: 640px) {
   .sketch-dialog {
-    width: calc(100vw - 16px);
-    height: calc(100dvh - 16px);
+    width: min(calc(100vw - 16px), calc((100dvh - 16px) * var(--sketch-ratio)));
   }
+
 }
 </style>

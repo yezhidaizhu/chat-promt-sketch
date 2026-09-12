@@ -14,6 +14,7 @@ const props = defineProps({
     type: Number,
     default: 36,
   },
+  outside: Boolean,
 });
 
 const emit = defineEmits(["update:modelValue"]);
@@ -72,7 +73,7 @@ function onKeydown(event) {
 </script>
 
 <template>
-  <aside class="brush-controls" aria-label="画笔设置">
+    <aside class="brush-controls" :class="{ 'is-outside': outside }" aria-label="画笔设置">
     <div
       class="size-control"
       :class="{ 'is-dragging': dragging }"
@@ -110,6 +111,7 @@ function onKeydown(event) {
   align-items: center;
   flex-direction: column;
   transform: translateY(-50%);
+  transition: left var(--sketch-transition-expand), background-color var(--sketch-transition-fast), box-shadow var(--sketch-transition-fast);
 }
 
 .size-control {
@@ -196,6 +198,48 @@ function onKeydown(event) {
   border-radius: var(--sketch-radius-sm);
   outline: 2px solid var(--sketch-color-focus);
   outline-offset: 2px;
+}
+
+.brush-controls.is-outside {
+  position: absolute;
+  z-index: var(--sketch-z-brush-controls);
+  top: 50%;
+  left: -60px;
+  width: 48px;
+  padding: 8px 0;
+  border-radius: var(--sketch-radius-md);
+  background: var(--sketch-color-control);
+  box-shadow: var(--sketch-shadow-popover);
+  transform: translateY(-50%);
+}
+
+.brush-controls.is-outside .size-control {
+  width: 48px;
+  height: var(--sketch-slider-height);
+  cursor: ns-resize;
+}
+
+.brush-controls.is-outside .size-control__track {
+  top: var(--sketch-slider-inset);
+  right: auto;
+  bottom: var(--sketch-slider-inset);
+  left: 50%;
+  width: 2px;
+  height: auto;
+  transform: translateX(-50%);
+}
+
+.brush-controls.is-outside .size-control__scale {
+  top: var(--sketch-slider-inset);
+  left: 8px;
+  width: 32px;
+  height: 192px;
+  clip-path: polygon(0 0, 100% 0, 53% 100%, 47% 100%);
+  transform-origin: 50% 100%;
+}
+
+.brush-controls.is-outside .size-control__thumb {
+  left: 8px;
 }
 
 @media (max-width: 640px) {
