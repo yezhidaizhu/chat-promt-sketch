@@ -1,6 +1,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import ColorPalette from "./ColorPalette.vue";
+import OutputActions from "./OutputActions.vue";
 import SketchToolbar from "./SketchToolbar.vue";
 import StrokeSizeControl from "./StrokeSizeControl.vue";
 import SketchTextEditor from "./SketchTextEditor.vue";
@@ -613,8 +614,6 @@ onBeforeUnmount(() => {
           :shape-menu-open="activePopover === 'shape'"
           :can-undo="canUndo"
           :can-redo="canRedo"
-          :can-copy="hasContent"
-          :copy-succeeded="copySucceeded"
           :is-fullscreen="isFullscreen"
           :is-browser-fullscreen="browserFullscreen"
           :is-interface-fullscreen="interfaceFullscreen"
@@ -625,7 +624,6 @@ onBeforeUnmount(() => {
           @toggle-shapes="toggleShapeMenu"
           @select-shape="selectShape"
           @undo="undo"
-          @copy="copyCanvas"
           @redo="redo"
           @clear="requestClearCanvas"
           @toggle-controls="toggleControlsOutside"
@@ -673,7 +671,8 @@ onBeforeUnmount(() => {
 
           </div>
         </div>
-        <ColorPalette :model-value="strokeColor" :disabled="!hasContent" :can-copy="hasContent" :copy-succeeded="copySucceeded" :outside="effectiveControlsOutside" @update:model-value="setStrokeColor" @download="downloadCanvas" @copy="copyCanvas" />
+        <ColorPalette :model-value="strokeColor" :outside="effectiveControlsOutside" @update:model-value="setStrokeColor" />
+        <OutputActions :disabled="!hasContent" :can-copy="hasContent" :copy-succeeded="copySucceeded" :outside="effectiveControlsOutside" @download="downloadCanvas" @copy="copyCanvas" />
         <StrokeSizeControl :model-value="strokeSize" :outside="effectiveControlsOutside" @update:model-value="setStrokeSize" />
         <div class="sr-only" aria-live="polite">{{ statusMessage }}</div>
       </section>
@@ -746,6 +745,7 @@ onBeforeUnmount(() => {
 }
 
 .sketch-editor {
+  container-type: inline-size;
   overflow: visible;
   border-radius: inherit;
 }
