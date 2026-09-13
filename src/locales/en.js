@@ -7,6 +7,8 @@ export default {
     customInk: "Choose custom ink color",
     downloadPng: "Download PNG",
     copyPng: "Copy PNG",
+    expandOutputActions: "Show copy action",
+    collapseOutputActions: "Hide copy action",
     shape: "Shapes",
     backgroundMenu: "Choose canvas background",
     customBackground: "Custom background color",

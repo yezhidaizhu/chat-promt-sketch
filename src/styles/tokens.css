@@ -10,6 +10,7 @@
   --sketch-color-surface-raised: #292929;
   --sketch-color-control: #1b1b1b;
   --sketch-color-control-hover: rgba(255, 255, 255, 0.1);
+  --sketch-color-output-hover: #292929;
   --sketch-color-control-active: rgba(255, 255, 255, 0.05);
   --sketch-color-text: #f7f7f7;
   --sketch-color-text-muted: #a8a8a8;

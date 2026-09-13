@@ -1,6 +1,6 @@
 <script setup>
-import { computed, onBeforeUnmount } from "vue";
-import { Check, Copy, Download } from "@lucide/vue";
+import { computed, onBeforeUnmount, ref } from "vue";
+import { Check, ChevronsDown, ChevronsUp, Copy, Download } from "@lucide/vue";
 import { sketchConfig } from "../../config/sketch.js";
 import { locale } from "../../locales/index.js";
 
@@ -18,6 +18,7 @@ const props = defineProps({
 });
 
 const emit = defineEmits(["update:modelValue", "download", "copy"]);
+const outputExpanded = ref(false);
 let colorFrame = 0;
 let pendingColor = "";
 
@@ -37,7 +38,9 @@ function flushCustomColor(event) {
   emit("update:modelValue", pendingColor);
 }
 
-onBeforeUnmount(() => cancelAnimationFrame(colorFrame));
+onBeforeUnmount(() => {
+  cancelAnimationFrame(colorFrame);
+});
 
 const colors = sketchConfig.inkColors.map((color) => ({ ...color, name: copy.colors[color.id] }));
 
@@ -70,9 +73,14 @@ const isCustom = computed(() => !colors.some((color) => color.value === props.mo
       ></button>
     </fieldset>
 
-    <div class="output-actions">
-      <button class="output-button" type="button" :title="copy.labels.downloadPng" :aria-label="copy.labels.downloadPng" :disabled="disabled" @click="emit('download')"><Download :size="19" aria-hidden="true" /></button>
-      <button class="output-button copy-button" :class="{ 'is-success': copySucceeded }" type="button" :title="copy.labels.copyPng" :aria-label="copy.labels.copyPng" :disabled="!canCopy || copySucceeded" @click="emit('copy')"><Check v-if="copySucceeded" :size="19" aria-hidden="true" /><Copy v-else :size="18" aria-hidden="true" /></button>
+    <div class="output-stack" :class="{ 'is-expanded': outputExpanded }">
+      <div class="output-main">
+        <div class="copy-reveal">
+          <button class="output-button copy-button" :class="{ 'is-success': copySucceeded }" type="button" :title="copy.labels.copyPng" :aria-label="copy.labels.copyPng" :disabled="!canCopy || copySucceeded" @click="emit('copy')"><Check v-if="copySucceeded" :size="19" aria-hidden="true" /><Copy v-else :size="18" aria-hidden="true" /></button>
+        </div>
+        <button class="output-button download-button" type="button" :title="copy.labels.downloadPng" :aria-label="copy.labels.downloadPng" :disabled="disabled" @click="emit('download')"><Download :size="19" aria-hidden="true" /></button>
+      </div>
+      <button class="output-button output-toggle" type="button" :title="outputExpanded ? copy.labels.collapseOutputActions : copy.labels.expandOutputActions" :aria-label="outputExpanded ? copy.labels.collapseOutputActions : copy.labels.expandOutputActions" :aria-expanded="outputExpanded" @click="outputExpanded = !outputExpanded"><ChevronsUp v-if="outputExpanded" :size="18" aria-hidden="true" /><ChevronsDown v-else :size="18" aria-hidden="true" /></button>
     </div>
   </div>
 </template>
@@ -85,18 +93,19 @@ const isCustom = computed(() => !colors.some((color) => color.value === props.mo
   bottom: var(--sketch-space-3);
   left: var(--sketch-space-3);
   display: grid;
-  height: 36px;
+  height: 40px;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   pointer-events: none;
   transition: bottom var(--sketch-transition-expand);
 }
 
 .bottom-controls.is-outside {
-  bottom: calc(-1 * (36px + var(--sketch-space-3)));
+  bottom: calc(-1 * (40px + var(--sketch-space-3)));
 }
 
 .color-palette {
   grid-column: 2;
+  align-self: center;
   display: flex;
   min-width: 0;
   align-items: center;
@@ -165,41 +174,92 @@ const isCustom = computed(() => !colors.some((color) => color.value === props.mo
   outline-offset: 3px;
 }
 
-.output-actions {
-  grid-column: 3;
-  justify-self: end;
+.output-stack {
+  --output-main-size: 44px;
+  --output-toggle-size: 34px;
+  --output-hover: var(--sketch-color-output-hover);
+  position: absolute;
+  right: 0;
+  bottom: 0;
   display: flex;
-  gap: var(--sketch-space-2);
+  align-items: end;
   pointer-events: auto;
+}
+
+.output-main {
+  position: relative;
+  width: var(--output-main-size);
+  height: var(--output-main-size);
+  overflow: hidden;
+  border: 1px solid var(--sketch-color-border);
+  border-radius: var(--sketch-radius-pill) 0 0 var(--sketch-radius-pill);
+  background: var(--sketch-color-control);
+  pointer-events: auto;
+}
+
+.output-stack.is-expanded .output-main {
+  height: calc(var(--output-main-size) * 2);
+  border-radius: var(--sketch-radius-pill) var(--sketch-radius-pill) 0 var(--sketch-radius-pill);
+  transition: height var(--sketch-transition-expand);
 }
 
 .output-button {
   display: grid;
-  width: 36px;
-  height: 36px;
+  width: var(--output-main-size);
+  height: var(--output-main-size);
+  flex: 0 0 var(--output-main-size);
   padding: 0;
   place-items: center;
   border: 0;
-  border-radius: 50%;
-  background: #ffffff;
-  color: var(--sketch-color-surface);
+  border-radius: 0;
+  background: transparent;
+  color: var(--sketch-color-text-muted);
   cursor: pointer;
-  transition: background-color var(--sketch-transition-fast), opacity var(--sketch-transition-fast);
+  transition: background-color var(--sketch-transition-fast), color var(--sketch-transition-fast), opacity var(--sketch-transition-fast);
 }
 
 .output-button:hover:not(:disabled) {
-  background: #dedede;
+  background: var(--output-hover);
+  color: var(--sketch-color-text);
 }
 
 .output-button:disabled {
-  background: rgba(255, 255, 255, 0.41);
-  color: #424242;
   opacity: 0.35;
   cursor: not-allowed;
 }
 
+.copy-reveal {
+  position: absolute;
+  bottom: var(--output-main-size);
+  left: 0;
+  width: 100%;
+  height: var(--output-main-size);
+  overflow: hidden;
+}
 .copy-button.is-success,
-.copy-button.is-success:hover:not(:disabled) { background: #6dd8b7; color: #154d3b; }
+.copy-button.is-success:hover:not(:disabled) { background: rgba(109, 216, 183, 0.16); color: var(--sketch-color-selection); }
+
+.download-button {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+}
+.output-stack.is-expanded .download-button { box-shadow: inset 0 1px var(--sketch-color-border); }
+.download-button svg { transform: translateY(-1px); }
+.output-toggle {
+  width: var(--output-toggle-size);
+  height: var(--output-main-size);
+  flex-basis: var(--output-toggle-size);
+  margin-left: -1px;
+  border: 1px solid var(--sketch-color-border);
+  border-radius: 0 var(--sketch-radius-pill) var(--sketch-radius-pill) 0;
+  background: var(--sketch-color-control);
+}
+
+.output-toggle:hover {
+  background: var(--output-hover);
+  color: var(--sketch-color-text);
+}
 
 @media (max-width: 640px) {
   .bottom-controls {
