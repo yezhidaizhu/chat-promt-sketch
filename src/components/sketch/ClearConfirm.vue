@@ -1,15 +1,16 @@
 <script setup>
 import { BrushCleaning, X } from "@lucide/vue";
+import { sketchConfig } from "../../config/sketch.js";
 
 const emit = defineEmits(["confirm", "cancel"]);
 </script>
 
 <template>
-  <div class="clear-confirm" aria-label="确认清空画布">
-    <p>清空全部内容？</p>
+  <div class="clear-confirm" :aria-label="sketchConfig.labels.clearConfirm">
+    <p>{{ sketchConfig.labels.clearQuestion }}</p>
     <div class="clear-confirm__actions">
-      <button class="cancel-button" type="button" title="取消" aria-label="取消" @click="emit('cancel')"><X :size="16" aria-hidden="true" /></button>
-      <button class="confirm-button" type="button" @click="emit('confirm')"><BrushCleaning :size="16" aria-hidden="true" />清空</button>
+      <button class="cancel-button" type="button" :title="sketchConfig.labels.cancel" :aria-label="sketchConfig.labels.cancel" @click="emit('cancel')"><X :size="16" aria-hidden="true" /></button>
+      <button class="confirm-button" type="button" @click="emit('confirm')"><BrushCleaning :size="16" aria-hidden="true" />{{ sketchConfig.labels.clear }}</button>
     </div>
   </div>
 </template>

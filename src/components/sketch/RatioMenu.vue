@@ -1,11 +1,9 @@
 <script setup>
+import { sketchConfig } from "../../config/sketch.js";
+
 defineProps({ current: { type: String, required: true } });
 const emit = defineEmits(["select"]);
-const ratios = [
-  { id: "1:1", label: "正方形", width: 1, height: 1 }, { id: "4:3", label: "标准横向", width: 4, height: 3 },
-  { id: "16:9", label: "宽屏横向", width: 16, height: 9 }, { id: "3:4", label: "标准纵向", width: 3, height: 4 },
-  { id: "9:16", label: "宽屏纵向", width: 9, height: 16 }, { id: "3:2", label: "照片横向", width: 3, height: 2 },
-];
+const ratios = sketchConfig.ratios;
 
 function previewStyle(item) {
   const ratio = item.width / item.height;
@@ -16,7 +14,7 @@ function previewStyle(item) {
 </script>
 
 <template>
-  <div class="ratio-menu" aria-label="选择画布比例">
+  <div class="ratio-menu" :aria-label="sketchConfig.labels.ratioMenu">
     <button v-for="item in ratios" :key="item.id" class="ratio-option" :class="{ 'is-active': current === item.id }" type="button" role="menuitemradio" :aria-label="`${item.label} ${item.id}`" :aria-checked="current === item.id" @click="emit('select', item.id)">
       <span class="ratio-preview" :style="previewStyle(item)" aria-hidden="true"></span>
       <span class="ratio-label">{{ item.id }}</span>

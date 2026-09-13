@@ -14,6 +14,7 @@ import { closePopover, openPopover } from "../../composables/usePopover.js";
 import { isSelectionFrameHit as hitSelectionFrame, resizeCursor as getResizeCursor } from "../../utils/hitTest.js";
 import { drawFreehand, drawShape, prepareContext } from "../../utils/sketchDrawing.js";
 import { createSketchCamera } from "../../utils/sketchCamera.js";
+import { sketchConfig } from "../../config/sketch.js";
 
 const props = defineProps({
   modelValue: {
@@ -62,7 +63,7 @@ const textLineHeight = 1.25;
 const textMinSize = 12;
 const textMaxSize = 160;
 
-const toolLabels = { select: "选择并移动", pen: "画笔", text: "文字", eraser: "橡皮擦" };
+const toolLabels = Object.fromEntries(sketchConfig.tools.map((tool) => [tool.id, tool.label]));
 const ratioValue = computed(() => {
   const [width, height] = canvasRatio.value.split(":").map(Number);
   return width / height;
@@ -491,12 +492,6 @@ function downloadCanvas() {
   announce("图片已下载");
 }
 
-function finishSketch() {
-  if (!hasContent.value) return;
-  downloadCanvas();
-  closeDialog();
-}
-
 function closeDialog() {
   emit("update:modelValue", false);
 }
@@ -608,7 +603,7 @@ onBeforeUnmount(() => {
       <div class="sketch-backdrop"></div>
       <div ref="dialog" class="sketch-dialog" :style="dialogStyle" role="dialog" aria-modal="true" aria-labelledby="sketch-dialog-title" tabindex="-1" @keydown="onKeydown">
       <section class="sketch-editor" :class="{ 'is-controls-outside': effectiveControlsOutside }">
-        <h2 id="sketch-dialog-title" class="sr-only">画板</h2>
+          <h2 id="sketch-dialog-title" class="sr-only">{{ sketchConfig.labels.dialog }}</h2>
         <div id="sketch-popover-host"></div>
 
         <SketchToolbar
@@ -677,7 +672,7 @@ onBeforeUnmount(() => {
 
           </div>
         </div>
-        <ColorPalette :model-value="strokeColor" :disabled="!hasContent" :outside="effectiveControlsOutside" @update:model-value="setStrokeColor" @finish="finishSketch" />
+        <ColorPalette :model-value="strokeColor" :disabled="!hasContent" :can-copy="hasContent" :copy-succeeded="copySucceeded" :outside="effectiveControlsOutside" @update:model-value="setStrokeColor" @download="downloadCanvas" @copy="copyCanvas" />
         <StrokeSizeControl :model-value="strokeSize" :outside="effectiveControlsOutside" @update:model-value="setStrokeSize" />
         <div class="sr-only" aria-live="polite">{{ statusMessage }}</div>
       </section>

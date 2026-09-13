@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount } from "vue";
-import { Check } from "@lucide/vue";
+import { Check, Copy, Download } from "@lucide/vue";
+import { sketchConfig } from "../../config/sketch.js";
 
 const props = defineProps({
   modelValue: {
@@ -8,10 +9,12 @@ const props = defineProps({
     required: true,
   },
   disabled: Boolean,
+  canCopy: Boolean,
+  copySucceeded: Boolean,
   outside: Boolean,
 });
 
-const emit = defineEmits(["update:modelValue", "finish"]);
+const emit = defineEmits(["update:modelValue", "download", "copy"]);
 let colorFrame = 0;
 let pendingColor = "";
 
@@ -33,34 +36,20 @@ function flushCustomColor(event) {
 
 onBeforeUnmount(() => cancelAnimationFrame(colorFrame));
 
-const colors = [
-  { name: "白色", value: "#ffffff" },
-  { name: "灰色", value: "#6b7280" },
-  { name: "棕色", value: "#92400e" },
-  { name: "红色", value: "#dc2626" },
-  { name: "橙色", value: "#f97316" },
-  { name: "黄色", value: "#f59e0b" },
-  { name: "绿色", value: "#16a34a" },
-  { name: "蓝绿色", value: "#0d9488" },
-  { name: "青色", value: "#06b6d4" },
-  { name: "蓝色", value: "#2563eb" },
-  { name: "靛蓝色", value: "#4f46e5" },
-  { name: "紫色", value: "#9333ea" },
-  { name: "粉色", value: "#db2777" },
-];
+const colors = sketchConfig.inkColors;
 
 const isCustom = computed(() => !colors.some((color) => color.value === props.modelValue.toLowerCase()));
 </script>
 
 <template>
   <div class="bottom-controls" :class="{ 'is-outside': outside }">
-    <fieldset class="color-palette" aria-label="墨水颜色">
-      <legend class="sr-only">墨水颜色</legend>
+    <fieldset class="color-palette" :aria-label="sketchConfig.labels.palette">
+      <legend class="sr-only">{{ sketchConfig.labels.palette }}</legend>
       <label
         class="color-button custom-color"
         :class="{ 'is-selected': isCustom }"
-        title="选择自定义颜色"
-        aria-label="选择自定义颜色"
+        :title="sketchConfig.labels.customInk"
+        :aria-label="sketchConfig.labels.customInk"
       >
         <input :value="modelValue" type="color" @input="queueCustomColor" @change="flushCustomColor" />
       </label>
@@ -78,16 +67,10 @@ const isCustom = computed(() => !colors.some((color) => color.value === props.mo
       ></button>
     </fieldset>
 
-    <button
-      class="finish-button"
-      type="button"
-      title="完成并下载 PNG"
-      aria-label="完成并下载 PNG"
-      :disabled="disabled"
-      @click="emit('finish')"
-    >
-      <Check :size="20" aria-hidden="true" />
-    </button>
+    <div class="output-actions">
+      <button class="output-button" type="button" :title="sketchConfig.labels.downloadPng" :aria-label="sketchConfig.labels.downloadPng" :disabled="disabled" @click="emit('download')"><Download :size="19" aria-hidden="true" /></button>
+      <button class="output-button copy-button" :class="{ 'is-success': copySucceeded }" type="button" :title="sketchConfig.labels.copyPng" :aria-label="sketchConfig.labels.copyPng" :disabled="!canCopy || copySucceeded" @click="emit('copy')"><Check v-if="copySucceeded" :size="19" aria-hidden="true" /><Copy v-else :size="18" aria-hidden="true" /></button>
+    </div>
   </div>
 </template>
 
@@ -98,10 +81,9 @@ const isCustom = computed(() => !colors.some((color) => color.value === props.mo
   right: var(--sketch-space-3);
   bottom: var(--sketch-space-3);
   left: var(--sketch-space-3);
-  display: flex;
+  display: grid;
   height: 36px;
-  align-items: center;
-  justify-content: center;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   pointer-events: none;
   transition: bottom var(--sketch-transition-expand);
 }
@@ -111,6 +93,7 @@ const isCustom = computed(() => !colors.some((color) => color.value === props.mo
 }
 
 .color-palette {
+  grid-column: 2;
   display: flex;
   min-width: 0;
   align-items: center;
@@ -173,15 +156,21 @@ const isCustom = computed(() => !colors.some((color) => color.value === props.mo
 }
 
 .custom-color:has(input:focus-visible),
-.finish-button:focus-visible,
+.output-button:focus-visible,
 .color-button:focus-visible {
   outline: 2px solid #2c67c5;
   outline-offset: 3px;
 }
 
-.finish-button {
-  position: absolute;
-  right: 0;
+.output-actions {
+  grid-column: 3;
+  justify-self: end;
+  display: flex;
+  gap: var(--sketch-space-2);
+  pointer-events: auto;
+}
+
+.output-button {
   display: grid;
   width: 36px;
   height: 36px;
@@ -192,29 +181,32 @@ const isCustom = computed(() => !colors.some((color) => color.value === props.mo
   background: #ffffff;
   color: var(--sketch-color-surface);
   cursor: pointer;
-  pointer-events: auto;
   transition: background-color var(--sketch-transition-fast), opacity var(--sketch-transition-fast);
 }
 
-.finish-button:hover:not(:disabled) {
+.output-button:hover:not(:disabled) {
   background: #dedede;
 }
 
-.finish-button:disabled {
+.output-button:disabled {
   background: rgba(255, 255, 255, 0.41);
   color: #424242;
   opacity: 0.35;
   cursor: not-allowed;
 }
 
+.copy-button.is-success,
+.copy-button.is-success:hover:not(:disabled) { background: #6dd8b7; color: #154d3b; }
+
 @media (max-width: 640px) {
   .bottom-controls {
-    justify-content: flex-start;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .color-palette {
-    width: calc(100% - 52px);
-    max-width: 448px;
+    grid-column: 1;
+    width: 100%;
+    max-width: none;
     justify-content: flex-start;
     overflow-x: auto;
     scrollbar-width: none;
@@ -229,11 +221,10 @@ const isCustom = computed(() => !colors.some((color) => color.value === props.mo
   .bottom-controls.is-outside {
     right: 0;
     left: 136px;
-    justify-content: flex-start;
   }
 
   .bottom-controls.is-outside .color-palette {
-    width: calc(100% - 52px);
+    width: 100%;
     max-width: none;
     justify-content: flex-start;
     overflow-x: auto;

@@ -1,18 +1,13 @@
 <script setup>
 import { onBeforeUnmount } from "vue";
+import { sketchConfig } from "../../config/sketch.js";
 
 defineProps({ current: { type: String, required: true } });
 const emit = defineEmits(["preview", "select"]);
 let frame = 0;
 let previewColor = "";
 
-const colors = [
-  { name: "深色", value: "#171717" },
-  { name: "白色", value: "#ffffff" },
-  { name: "暖灰", value: "#ede9e1" },
-  { name: "浅蓝", value: "#e8f0f7" },
-  { name: "浅粉", value: "#f6e9ed" },
-];
+const colors = sketchConfig.backgroundColors;
 
 function queuePreview(event) {
   previewColor = event.target.value;
@@ -33,9 +28,9 @@ onBeforeUnmount(() => cancelAnimationFrame(frame));
 </script>
 
 <template>
-  <div class="background-color-menu" aria-label="选择画布背景色">
+  <div class="background-color-menu" :aria-label="sketchConfig.labels.backgroundMenu">
     <button v-for="color in colors" :key="color.value" class="background-color-option" :class="{ 'is-active': current === color.value }" type="button" role="menuitemradio" :aria-label="`${color.name}背景`" :aria-checked="current === color.value" :style="{ backgroundColor: color.value }" @click="emit('select', color.value)"></button>
-    <label class="background-color-option is-custom" title="自定义背景色" aria-label="自定义背景色">
+    <label class="background-color-option is-custom" :title="sketchConfig.labels.customBackground" :aria-label="sketchConfig.labels.customBackground">
       <input type="color" :value="current" @input="queuePreview" @change="selectCustomColor" />
     </label>
   </div>

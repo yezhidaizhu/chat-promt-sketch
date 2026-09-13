@@ -1,5 +1,6 @@
 <script setup>
 import { Shapes } from "@lucide/vue";
+import { sketchConfig } from "../../config/sketch.js";
 
 defineProps({
   active: Boolean,
@@ -19,8 +20,8 @@ const emit = defineEmits(["toggle"]);
       class="tool-button"
       :class="{ 'is-active': active }"
       type="button"
-      title="形状"
-      aria-label="选择形状"
+      :title="sketchConfig.labels.shape"
+      :aria-label="sketchConfig.labels.shape"
       aria-haspopup="menu"
       :aria-expanded="open"
       @click="emit('toggle', $event.currentTarget)"
