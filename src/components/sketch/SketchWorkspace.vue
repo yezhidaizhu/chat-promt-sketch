@@ -14,7 +14,7 @@ import { closePopover, openPopover } from "../../composables/usePopover.js";
 import { isSelectionFrameHit as hitSelectionFrame, resizeCursor as getResizeCursor } from "../../utils/hitTest.js";
 import { drawFreehand, drawShape, prepareContext } from "../../utils/sketchDrawing.js";
 import { createSketchCamera } from "../../utils/sketchCamera.js";
-import { sketchConfig } from "../../config/sketch.js";
+import { locale } from "../../locales/index.js";
 
 const props = defineProps({
   modelValue: {
@@ -63,7 +63,8 @@ const textLineHeight = 1.25;
 const textMinSize = 12;
 const textMaxSize = 160;
 
-const toolLabels = Object.fromEntries(sketchConfig.tools.map((tool) => [tool.id, tool.label]));
+const copy = locale.sketch;
+const toolLabels = copy.tools;
 const ratioValue = computed(() => {
   const [width, height] = canvasRatio.value.split(":").map(Number);
   return width / height;
@@ -603,7 +604,7 @@ onBeforeUnmount(() => {
       <div class="sketch-backdrop"></div>
       <div ref="dialog" class="sketch-dialog" :style="dialogStyle" role="dialog" aria-modal="true" aria-labelledby="sketch-dialog-title" tabindex="-1" @keydown="onKeydown">
       <section class="sketch-editor" :class="{ 'is-controls-outside': effectiveControlsOutside }">
-          <h2 id="sketch-dialog-title" class="sr-only">{{ sketchConfig.labels.dialog }}</h2>
+          <h2 id="sketch-dialog-title" class="sr-only">{{ copy.labels.dialog }}</h2>
         <div id="sketch-popover-host"></div>
 
         <SketchToolbar
@@ -643,7 +644,7 @@ onBeforeUnmount(() => {
               ref="liveCanvas"
               class="live-canvas"
               role="application"
-              aria-label="画板，可使用鼠标、触控笔或触摸绘制"
+              :aria-label="copy.labels.canvas"
               tabindex="0"
               :style="{ cursor: canvasCursor }"
               @pointerdown="onPointerDown"

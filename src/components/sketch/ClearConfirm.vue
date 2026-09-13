@@ -1,16 +1,18 @@
 <script setup>
 import { BrushCleaning, X } from "@lucide/vue";
-import { sketchConfig } from "../../config/sketch.js";
+import { locale } from "../../locales/index.js";
+
+const copy = locale.sketch;
 
 const emit = defineEmits(["confirm", "cancel"]);
 </script>
 
 <template>
-  <div class="clear-confirm" :aria-label="sketchConfig.labels.clearConfirm">
-    <p>{{ sketchConfig.labels.clearQuestion }}</p>
+  <div class="clear-confirm" :aria-label="copy.labels.clearConfirm">
+    <p>{{ copy.labels.clearQuestion }}</p>
     <div class="clear-confirm__actions">
-      <button class="cancel-button" type="button" :title="sketchConfig.labels.cancel" :aria-label="sketchConfig.labels.cancel" @click="emit('cancel')"><X :size="16" aria-hidden="true" /></button>
-      <button class="confirm-button" type="button" @click="emit('confirm')"><BrushCleaning :size="16" aria-hidden="true" />{{ sketchConfig.labels.clear }}</button>
+      <button class="cancel-button" type="button" :title="copy.labels.cancel" :aria-label="copy.labels.cancel" @click="emit('cancel')"><X :size="16" aria-hidden="true" /></button>
+      <button class="confirm-button" type="button" @click="emit('confirm')"><BrushCleaning :size="16" aria-hidden="true" />{{ copy.labels.clear }}</button>
     </div>
   </div>
 </template>

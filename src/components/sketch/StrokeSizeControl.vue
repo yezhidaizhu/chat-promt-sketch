@@ -1,5 +1,8 @@
 <script setup>
 import { computed, ref } from "vue";
+import { locale } from "../../locales/index.js";
+
+const copy = locale.sketch;
 
 const props = defineProps({
   modelValue: {
@@ -73,14 +76,14 @@ function onKeydown(event) {
 </script>
 
 <template>
-    <aside class="brush-controls" :class="{ 'is-outside': outside }" aria-label="画笔设置">
+    <aside class="brush-controls" :class="{ 'is-outside': outside }" :aria-label="copy.labels.brushControls">
     <div
       class="size-control"
       :class="{ 'is-dragging': dragging }"
       role="slider"
       tabindex="0"
-      title="画笔粗细"
-      aria-label="画笔粗细"
+      :title="copy.labels.brushSize"
+      :aria-label="copy.labels.brushSize"
       aria-orientation="vertical"
       :aria-valuemin="min"
       :aria-valuemax="max"

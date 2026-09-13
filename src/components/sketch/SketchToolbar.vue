@@ -5,6 +5,7 @@ import ShapePicker from "./ShapePicker.vue";
 import MoveControlsIcon from "./MoveControlsIcon.vue";
 import SketchToolIcon from "./SketchToolIcon.vue";
 import { sketchConfig } from "../../config/sketch.js";
+import { locale } from "../../locales/index.js";
 
 defineProps({
   activeTool: {
@@ -55,18 +56,19 @@ function selectMoreAction(event, action) {
   emit(action, event.currentTarget);
 }
 
+const copy = locale.sketch;
 const toolIcons = { select: MousePointer2, pen: SketchToolIcon, text: Type };
-const tools = sketchConfig.tools.filter((tool) => tool.id !== "eraser").map((tool) => ({ ...tool, icon: toolIcons[tool.id] }));
-const toolLabels = Object.fromEntries(sketchConfig.tools.map((tool) => [tool.id, tool.label]));
+const tools = sketchConfig.tools.filter((tool) => tool !== "eraser").map((id) => ({ id, label: copy.tools[id], icon: toolIcons[id] }));
+const toolLabels = copy.tools;
 </script>
 
 <template>
   <header class="editor-header" :class="{ 'is-outside': controlsOutside }">
-    <button class="icon-button close-button" type="button" :title="sketchConfig.labels.close" aria-label="关闭画板" @click="emit('close')">
+    <button class="icon-button close-button" type="button" :title="copy.labels.close" :aria-label="copy.labels.closeDialog" @click="emit('close')">
       <X :size="21" aria-hidden="true" />
     </button>
 
-    <div class="tool-group" role="toolbar" aria-label="绘图工具">
+    <div class="tool-group" role="toolbar" aria-label="Drawing tools">
       <button
         v-for="tool in tools"
         :key="tool.id"
@@ -108,28 +110,28 @@ const toolLabels = Object.fromEntries(sketchConfig.tools.map((tool) => [tool.id,
       -->
     </div>
 
-    <div class="action-group" role="group" aria-label="画布操作">
-      <button class="icon-button" type="button" :title="sketchConfig.labels.undo" aria-label="撤销" :disabled="!canUndo" @click="emit('undo')">
+    <div class="action-group" role="group" :aria-label="copy.labels.canvasActions">
+      <button class="icon-button" type="button" :title="copy.labels.undo" aria-label="Undo" :disabled="!canUndo" @click="emit('undo')">
         <Undo2 :size="20" aria-hidden="true" />
       </button>
-      <button class="icon-button" type="button" :title="sketchConfig.labels.redo" aria-label="重做" :disabled="!canRedo" @click="emit('redo')">
+      <button class="icon-button" type="button" :title="copy.labels.redo" aria-label="Redo" :disabled="!canRedo" @click="emit('redo')">
         <Redo2 :size="20" aria-hidden="true" />
       </button>
-      <button class="icon-button" type="button" :title="sketchConfig.labels.clearCanvas" :aria-label="sketchConfig.labels.clearCanvas" aria-haspopup="menu" :disabled="!hasContent" @click="emit('clear', $event.currentTarget)">
+      <button class="icon-button" type="button" :title="copy.labels.clearCanvas" :aria-label="copy.labels.clearCanvas" aria-haspopup="menu" :disabled="!hasContent" @click="emit('clear', $event.currentTarget)">
         <BrushCleaning :size="19" aria-hidden="true" />
       </button>
       <div class="settings-stack" :class="{ 'is-expanded': moreExpanded }">
-        <button v-if="!moreExpanded" class="icon-button more-toggle" type="button" :title="sketchConfig.labels.expandSettings" :aria-label="sketchConfig.labels.expandSettings" aria-haspopup="menu" :aria-expanded="moreExpanded" @click="toggleMore">
+        <button v-if="!moreExpanded" class="icon-button more-toggle" type="button" :title="copy.labels.expandSettings" :aria-label="copy.labels.expandSettings" aria-haspopup="menu" :aria-expanded="moreExpanded" @click="toggleMore">
           <ChevronsDown :size="20" aria-hidden="true" />
         </button>
-        <div v-else class="canvas-settings-menu" role="menu" aria-label="画布设置">
-          <button class="more-toggle" type="button" :title="sketchConfig.labels.collapseSettings" :aria-label="sketchConfig.labels.collapseSettings" @click="toggleMore"><ChevronsUp :size="20" aria-hidden="true" /></button>
-          <button type="button" role="menuitem" :title="sketchConfig.labels.background" :aria-label="sketchConfig.labels.background" aria-haspopup="menu" @click="selectMoreAction($event, 'toggle-background')"><PaintBucket :size="18" aria-hidden="true" /></button>
-          <button type="button" role="menuitem" :title="sketchConfig.labels.ratio" :aria-label="sketchConfig.labels.ratio" :disabled="isFullscreen" @click="selectMoreAction($event, 'toggle-ratio')"><Ratio :size="18" aria-hidden="true" /></button>
-          <button type="button" role="menuitem" :title="controlsOutside ? sketchConfig.labels.moveControlsInside : sketchConfig.labels.moveControlsOutside" :aria-label="controlsOutside ? sketchConfig.labels.moveControlsInside : sketchConfig.labels.moveControlsOutside" :disabled="isFullscreen" @click="selectMoreAction($event, 'toggle-controls')"><MoveControlsIcon :outside="controlsOutside" /></button>
-          <button class="copy-action" :class="{ 'is-success': copySucceeded }" type="button" role="menuitem" :title="sketchConfig.labels.copyPng" :aria-label="sketchConfig.labels.copyPng" :aria-disabled="copySucceeded" :disabled="!canCopy" @click="!copySucceeded && selectMoreAction($event, 'copy')"><Check v-if="copySucceeded" :size="18" aria-hidden="true" /><Copy v-else :size="18" aria-hidden="true" /></button>
-          <button type="button" role="menuitem" :title="isBrowserFullscreen ? sketchConfig.labels.exitBrowserFullscreen : sketchConfig.labels.browserFullscreen" :aria-label="isBrowserFullscreen ? sketchConfig.labels.exitBrowserFullscreen : sketchConfig.labels.browserFullscreen" @click="emit('toggle-browser-fullscreen')"><Minimize v-if="isBrowserFullscreen" :size="18" aria-hidden="true" /><Fullscreen v-else :size="18" aria-hidden="true" /></button>
-          <button type="button" role="menuitem" :title="isInterfaceFullscreen ? sketchConfig.labels.exitInterfaceFullscreen : sketchConfig.labels.interfaceFullscreen" :aria-label="isInterfaceFullscreen ? sketchConfig.labels.exitInterfaceFullscreen : sketchConfig.labels.interfaceFullscreen" @click="emit('toggle-interface-fullscreen')"><Minimize2 v-if="isInterfaceFullscreen" :size="18" aria-hidden="true" /><Maximize2 v-else :size="18" aria-hidden="true" /></button>
+        <div v-else class="canvas-settings-menu" role="menu" :aria-label="copy.labels.canvasSettings">
+          <button class="more-toggle" type="button" :title="copy.labels.collapseSettings" :aria-label="copy.labels.collapseSettings" @click="toggleMore"><ChevronsUp :size="20" aria-hidden="true" /></button>
+          <button type="button" role="menuitem" :title="copy.labels.background" :aria-label="copy.labels.background" aria-haspopup="menu" @click="selectMoreAction($event, 'toggle-background')"><PaintBucket :size="18" aria-hidden="true" /></button>
+          <button type="button" role="menuitem" :title="copy.labels.ratio" :aria-label="copy.labels.ratio" :disabled="isFullscreen" @click="selectMoreAction($event, 'toggle-ratio')"><Ratio :size="18" aria-hidden="true" /></button>
+          <button type="button" role="menuitem" :title="controlsOutside ? copy.labels.moveControlsInside : copy.labels.moveControlsOutside" :aria-label="controlsOutside ? copy.labels.moveControlsInside : copy.labels.moveControlsOutside" :disabled="isFullscreen" @click="selectMoreAction($event, 'toggle-controls')"><MoveControlsIcon :outside="controlsOutside" /></button>
+          <button class="copy-action" :class="{ 'is-success': copySucceeded }" type="button" role="menuitem" :title="copy.labels.copyPng" :aria-label="copy.labels.copyPng" :aria-disabled="copySucceeded" :disabled="!canCopy" @click="!copySucceeded && selectMoreAction($event, 'copy')"><Check v-if="copySucceeded" :size="18" aria-hidden="true" /><Copy v-else :size="18" aria-hidden="true" /></button>
+          <button type="button" role="menuitem" :title="isBrowserFullscreen ? copy.labels.exitBrowserFullscreen : copy.labels.browserFullscreen" :aria-label="isBrowserFullscreen ? copy.labels.exitBrowserFullscreen : copy.labels.browserFullscreen" @click="emit('toggle-browser-fullscreen')"><Minimize v-if="isBrowserFullscreen" :size="18" aria-hidden="true" /><Fullscreen v-else :size="18" aria-hidden="true" /></button>
+          <button type="button" role="menuitem" :title="isInterfaceFullscreen ? copy.labels.exitInterfaceFullscreen : copy.labels.interfaceFullscreen" :aria-label="isInterfaceFullscreen ? copy.labels.exitInterfaceFullscreen : copy.labels.interfaceFullscreen" @click="emit('toggle-interface-fullscreen')"><Minimize2 v-if="isInterfaceFullscreen" :size="18" aria-hidden="true" /><Maximize2 v-else :size="18" aria-hidden="true" /></button>
         </div>
       </div>
     </div>

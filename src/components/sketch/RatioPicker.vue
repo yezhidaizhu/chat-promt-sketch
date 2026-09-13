@@ -1,5 +1,8 @@
 <script setup>
 import { Ratio } from "@lucide/vue";
+import { locale } from "../../locales/index.js";
+
+const copy = locale.sketch;
 
 defineProps({
   active: Boolean,
@@ -19,8 +22,8 @@ const emit = defineEmits(["toggle"]);
       class="tool-button"
       :class="{ 'is-active': active }"
       type="button"
-      title="画布比例"
-      aria-label="画布比例"
+      :title="copy.labels.ratio"
+      :aria-label="copy.labels.ratio"
       aria-haspopup="menu"
       :aria-expanded="open"
       @click="emit('toggle', $event.currentTarget)"

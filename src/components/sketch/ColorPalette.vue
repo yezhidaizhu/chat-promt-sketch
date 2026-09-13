@@ -2,6 +2,9 @@
 import { computed, onBeforeUnmount } from "vue";
 import { Check, Copy, Download } from "@lucide/vue";
 import { sketchConfig } from "../../config/sketch.js";
+import { locale } from "../../locales/index.js";
+
+const copy = locale.sketch;
 
 const props = defineProps({
   modelValue: {
@@ -36,20 +39,20 @@ function flushCustomColor(event) {
 
 onBeforeUnmount(() => cancelAnimationFrame(colorFrame));
 
-const colors = sketchConfig.inkColors;
+const colors = sketchConfig.inkColors.map((color) => ({ ...color, name: copy.colors[color.id] }));
 
 const isCustom = computed(() => !colors.some((color) => color.value === props.modelValue.toLowerCase()));
 </script>
 
 <template>
   <div class="bottom-controls" :class="{ 'is-outside': outside }">
-    <fieldset class="color-palette" :aria-label="sketchConfig.labels.palette">
-      <legend class="sr-only">{{ sketchConfig.labels.palette }}</legend>
+    <fieldset class="color-palette" :aria-label="copy.labels.palette">
+      <legend class="sr-only">{{ copy.labels.palette }}</legend>
       <label
         class="color-button custom-color"
         :class="{ 'is-selected': isCustom }"
-        :title="sketchConfig.labels.customInk"
-        :aria-label="sketchConfig.labels.customInk"
+        :title="copy.labels.customInk"
+        :aria-label="copy.labels.customInk"
       >
         <input :value="modelValue" type="color" @input="queueCustomColor" @change="flushCustomColor" />
       </label>
@@ -60,7 +63,7 @@ const isCustom = computed(() => !colors.some((color) => color.value === props.mo
         :class="{ 'is-selected': modelValue.toLowerCase() === color.value }"
         type="button"
         :title="color.name"
-        :aria-label="`使用${color.name}`"
+        :aria-label="`Use ${color.name}`"
         :aria-pressed="modelValue.toLowerCase() === color.value"
         :style="{ backgroundColor: color.value }"
         @click="emit('update:modelValue', color.value)"
@@ -68,8 +71,8 @@ const isCustom = computed(() => !colors.some((color) => color.value === props.mo
     </fieldset>
 
     <div class="output-actions">
-      <button class="output-button" type="button" :title="sketchConfig.labels.downloadPng" :aria-label="sketchConfig.labels.downloadPng" :disabled="disabled" @click="emit('download')"><Download :size="19" aria-hidden="true" /></button>
-      <button class="output-button copy-button" :class="{ 'is-success': copySucceeded }" type="button" :title="sketchConfig.labels.copyPng" :aria-label="sketchConfig.labels.copyPng" :disabled="!canCopy || copySucceeded" @click="emit('copy')"><Check v-if="copySucceeded" :size="19" aria-hidden="true" /><Copy v-else :size="18" aria-hidden="true" /></button>
+      <button class="output-button" type="button" :title="copy.labels.downloadPng" :aria-label="copy.labels.downloadPng" :disabled="disabled" @click="emit('download')"><Download :size="19" aria-hidden="true" /></button>
+      <button class="output-button copy-button" :class="{ 'is-success': copySucceeded }" type="button" :title="copy.labels.copyPng" :aria-label="copy.labels.copyPng" :disabled="!canCopy || copySucceeded" @click="emit('copy')"><Check v-if="copySucceeded" :size="19" aria-hidden="true" /><Copy v-else :size="18" aria-hidden="true" /></button>
     </div>
   </div>
 </template>

@@ -1,9 +1,12 @@
 <script setup>
 import { sketchConfig } from "../../config/sketch.js";
+import { locale } from "../../locales/index.js";
+
+const copy = locale.sketch;
 
 defineProps({ current: { type: String, required: true } });
 const emit = defineEmits(["select"]);
-const ratios = sketchConfig.ratios;
+const ratios = sketchConfig.ratios.map((ratio) => ({ ...ratio, label: copy.ratios[ratio.id] }));
 
 function previewStyle(item) {
   const ratio = item.width / item.height;
@@ -14,7 +17,7 @@ function previewStyle(item) {
 </script>
 
 <template>
-  <div class="ratio-menu" :aria-label="sketchConfig.labels.ratioMenu">
+  <div class="ratio-menu" :aria-label="copy.labels.ratioMenu">
     <button v-for="item in ratios" :key="item.id" class="ratio-option" :class="{ 'is-active': current === item.id }" type="button" role="menuitemradio" :aria-label="`${item.label} ${item.id}`" :aria-checked="current === item.id" @click="emit('select', item.id)">
       <span class="ratio-preview" :style="previewStyle(item)" aria-hidden="true"></span>
       <span class="ratio-label">{{ item.id }}</span>
