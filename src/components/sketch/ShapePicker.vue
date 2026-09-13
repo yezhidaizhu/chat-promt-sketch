@@ -1,6 +1,5 @@
 <script setup>
 import { Shapes } from "@lucide/vue";
-import Tooltip from "../Tooltip.vue";
 
 defineProps({
   active: Boolean,
@@ -16,19 +15,18 @@ const emit = defineEmits(["toggle"]);
 
 <template>
   <div class="shape-picker">
-    <Tooltip label="形状">
-      <button
-        class="tool-button"
-        :class="{ 'is-active': active }"
-        type="button"
-        aria-label="选择形状"
-        aria-haspopup="menu"
-        :aria-expanded="open"
-        @click="emit('toggle', $event.currentTarget)"
-      >
-        <Shapes :size="20" aria-hidden="true" />
-      </button>
-    </Tooltip>
+    <button
+      class="tool-button"
+      :class="{ 'is-active': active }"
+      type="button"
+      title="形状"
+      aria-label="选择形状"
+      aria-haspopup="menu"
+      :aria-expanded="open"
+      @click="emit('toggle', $event.currentTarget)"
+    >
+      <Shapes :size="20" aria-hidden="true" />
+    </button>
   </div>
 </template>
 

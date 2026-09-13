@@ -1,4 +1,5 @@
 <script setup>
+// 暂不使用。当前保留浏览器原生 title 提示，后续不要引入此组件。
 import { computed, nextTick, onBeforeUnmount, ref } from "vue";
 
 const props = defineProps({

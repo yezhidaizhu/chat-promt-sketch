@@ -4,7 +4,6 @@ import { ref } from "vue";
 import ShapePicker from "./ShapePicker.vue";
 import MoveControlsIcon from "./MoveControlsIcon.vue";
 import SketchToolIcon from "./SketchToolIcon.vue";
-import Tooltip from "../Tooltip.vue";
 
 defineProps({
   activeTool: {
@@ -64,25 +63,24 @@ const tools = [
 
 <template>
   <header class="editor-header" :class="{ 'is-outside': controlsOutside }">
-    <Tooltip label="关闭">
-      <button class="icon-button close-button" type="button" aria-label="关闭画板" @click="emit('close')">
-        <X :size="21" aria-hidden="true" />
-      </button>
-    </Tooltip>
+    <button class="icon-button close-button" type="button" title="关闭" aria-label="关闭画板" @click="emit('close')">
+      <X :size="21" aria-hidden="true" />
+    </button>
 
     <div class="tool-group" role="toolbar" aria-label="绘图工具">
-      <Tooltip v-for="tool in tools" :key="tool.id" :label="tool.label">
-        <button
-          class="tool-button"
-          :class="{ 'is-active': activeTool === tool.id }"
-          type="button"
-          :aria-label="tool.label"
-          :aria-pressed="activeTool === tool.id"
-          @click="emit('select-tool', tool.id)"
-        >
-          <component :is="tool.icon" :size="20" aria-hidden="true" />
-        </button>
-      </Tooltip>
+      <button
+        v-for="tool in tools"
+        :key="tool.id"
+        class="tool-button"
+        :class="{ 'is-active': activeTool === tool.id }"
+        type="button"
+        :title="tool.label"
+        :aria-label="tool.label"
+        :aria-pressed="activeTool === tool.id"
+        @click="emit('select-tool', tool.id)"
+      >
+        <component :is="tool.icon" :size="20" aria-hidden="true" />
+      </button>
 
       <ShapePicker
         :active="activeTool === 'shape'"
@@ -92,18 +90,17 @@ const tools = [
         @select="emit('select-shape', $event)"
       />
 
-      <Tooltip label="橡皮擦">
-        <button
-          class="tool-button"
-          :class="{ 'is-active': activeTool === 'eraser' }"
-          type="button"
-          aria-label="橡皮擦"
-          :aria-pressed="activeTool === 'eraser'"
-          @click="emit('select-tool', 'eraser')"
-        >
-          <Eraser :size="20" aria-hidden="true" />
-        </button>
-      </Tooltip>
+      <button
+        class="tool-button"
+        :class="{ 'is-active': activeTool === 'eraser' }"
+        type="button"
+        title="橡皮擦"
+        aria-label="橡皮擦"
+        :aria-pressed="activeTool === 'eraser'"
+        @click="emit('select-tool', 'eraser')"
+      >
+        <Eraser :size="20" aria-hidden="true" />
+      </button>
 
       <!--
       <button class="tool-button" type="button" title="展开更多绘图工具" aria-label="展开更多绘图工具">
@@ -113,35 +110,27 @@ const tools = [
     </div>
 
     <div class="action-group" role="group" aria-label="画布操作">
-      <Tooltip label="撤销 (Command/Ctrl+Z)">
-        <button class="icon-button" type="button" aria-label="撤销" :disabled="!canUndo" @click="emit('undo')">
-          <Undo2 :size="20" aria-hidden="true" />
-        </button>
-      </Tooltip>
-      <Tooltip label="重做 (Command/Ctrl+Shift+Z)">
-        <button class="icon-button" type="button" aria-label="重做" :disabled="!canRedo" @click="emit('redo')">
-          <Redo2 :size="20" aria-hidden="true" />
-        </button>
-      </Tooltip>
-      <Tooltip label="清空画布">
-        <button class="icon-button" type="button" aria-label="清空画布" aria-haspopup="menu" :disabled="!hasContent" @click="emit('clear', $event.currentTarget)">
-          <BrushCleaning :size="19" aria-hidden="true" />
-        </button>
-      </Tooltip>
+      <button class="icon-button" type="button" title="撤销 (Command/Ctrl+Z)" aria-label="撤销" :disabled="!canUndo" @click="emit('undo')">
+        <Undo2 :size="20" aria-hidden="true" />
+      </button>
+      <button class="icon-button" type="button" title="重做 (Command/Ctrl+Shift+Z)" aria-label="重做" :disabled="!canRedo" @click="emit('redo')">
+        <Redo2 :size="20" aria-hidden="true" />
+      </button>
+      <button class="icon-button" type="button" title="清空画布" aria-label="清空画布" aria-haspopup="menu" :disabled="!hasContent" @click="emit('clear', $event.currentTarget)">
+        <BrushCleaning :size="19" aria-hidden="true" />
+      </button>
       <div class="settings-stack" :class="{ 'is-expanded': moreExpanded }">
-        <Tooltip v-if="!moreExpanded" label="展开画布设置">
-          <button class="icon-button more-toggle" type="button" aria-label="展开画布设置" aria-haspopup="menu" :aria-expanded="moreExpanded" @click="toggleMore">
-            <ChevronsDown :size="20" aria-hidden="true" />
-          </button>
-        </Tooltip>
+        <button v-if="!moreExpanded" class="icon-button more-toggle" type="button" title="展开画布设置" aria-label="展开画布设置" aria-haspopup="menu" :aria-expanded="moreExpanded" @click="toggleMore">
+          <ChevronsDown :size="20" aria-hidden="true" />
+        </button>
         <div v-else class="canvas-settings-menu" role="menu" aria-label="画布设置">
-          <Tooltip label="收起画布设置" placement="right"><button class="more-toggle" type="button" aria-label="收起画布设置" @click="toggleMore"><ChevronsUp :size="20" aria-hidden="true" /></button></Tooltip>
-          <Tooltip label="画布背景色" placement="right"><button type="button" role="menuitem" aria-label="画布背景色" aria-haspopup="menu" @click="selectMoreAction($event, 'toggle-background')"><PaintBucket :size="18" aria-hidden="true" /></button></Tooltip>
-          <Tooltip label="画布比例" placement="right"><button type="button" role="menuitem" aria-label="画布比例" :disabled="isFullscreen" @click="selectMoreAction($event, 'toggle-ratio')"><Ratio :size="18" aria-hidden="true" /></button></Tooltip>
-          <Tooltip :label="controlsOutside ? '操作区移回画布内' : '操作区移到画布外'" placement="right"><button type="button" role="menuitem" :aria-label="controlsOutside ? '操作区移回画布内' : '操作区移到画布外'" :disabled="isFullscreen" @click="selectMoreAction($event, 'toggle-controls')"><MoveControlsIcon :outside="controlsOutside" /></button></Tooltip>
-          <Tooltip label="复制 PNG 图片" placement="right"><button class="copy-action" :class="{ 'is-success': copySucceeded }" type="button" role="menuitem" aria-label="复制 PNG 图片" :aria-disabled="copySucceeded" :disabled="!canCopy" @click="!copySucceeded && selectMoreAction($event, 'copy')"><Check v-if="copySucceeded" :size="18" aria-hidden="true" /><Copy v-else :size="18" aria-hidden="true" /></button></Tooltip>
-          <Tooltip :label="isBrowserFullscreen ? '退出浏览器全屏' : '浏览器全屏'" placement="right"><button type="button" role="menuitem" :aria-label="isBrowserFullscreen ? '退出浏览器全屏' : '浏览器全屏'" @click="emit('toggle-browser-fullscreen')"><Minimize v-if="isBrowserFullscreen" :size="18" aria-hidden="true" /><Fullscreen v-else :size="18" aria-hidden="true" /></button></Tooltip>
-          <Tooltip :label="isInterfaceFullscreen ? '退出界面全屏' : '界面全屏'" placement="right"><button type="button" role="menuitem" :aria-label="isInterfaceFullscreen ? '退出界面全屏' : '界面全屏'" @click="emit('toggle-interface-fullscreen')"><Minimize2 v-if="isInterfaceFullscreen" :size="18" aria-hidden="true" /><Maximize2 v-else :size="18" aria-hidden="true" /></button></Tooltip>
+          <button class="more-toggle" type="button" title="收起画布设置" aria-label="收起画布设置" @click="toggleMore"><ChevronsUp :size="20" aria-hidden="true" /></button>
+          <button type="button" role="menuitem" title="画布背景色" aria-label="画布背景色" aria-haspopup="menu" @click="selectMoreAction($event, 'toggle-background')"><PaintBucket :size="18" aria-hidden="true" /></button>
+          <button type="button" role="menuitem" title="画布比例" aria-label="画布比例" :disabled="isFullscreen" @click="selectMoreAction($event, 'toggle-ratio')"><Ratio :size="18" aria-hidden="true" /></button>
+          <button type="button" role="menuitem" :title="controlsOutside ? '操作区移回画布内' : '操作区移到画布外'" :aria-label="controlsOutside ? '操作区移回画布内' : '操作区移到画布外'" :disabled="isFullscreen" @click="selectMoreAction($event, 'toggle-controls')"><MoveControlsIcon :outside="controlsOutside" /></button>
+          <button class="copy-action" :class="{ 'is-success': copySucceeded }" type="button" role="menuitem" title="复制 PNG 图片" aria-label="复制 PNG 图片" :aria-disabled="copySucceeded" :disabled="!canCopy" @click="!copySucceeded && selectMoreAction($event, 'copy')"><Check v-if="copySucceeded" :size="18" aria-hidden="true" /><Copy v-else :size="18" aria-hidden="true" /></button>
+          <button type="button" role="menuitem" :title="isBrowserFullscreen ? '退出浏览器全屏' : '浏览器全屏'" :aria-label="isBrowserFullscreen ? '退出浏览器全屏' : '浏览器全屏'" @click="emit('toggle-browser-fullscreen')"><Minimize v-if="isBrowserFullscreen" :size="18" aria-hidden="true" /><Fullscreen v-else :size="18" aria-hidden="true" /></button>
+          <button type="button" role="menuitem" :title="isInterfaceFullscreen ? '退出界面全屏' : '界面全屏'" :aria-label="isInterfaceFullscreen ? '退出界面全屏' : '界面全屏'" @click="emit('toggle-interface-fullscreen')"><Minimize2 v-if="isInterfaceFullscreen" :size="18" aria-hidden="true" /><Maximize2 v-else :size="18" aria-hidden="true" /></button>
         </div>
       </div>
     </div>
@@ -192,7 +181,7 @@ const tools = [
 }
 
 .shape-picker,
-.tool-group > .tooltip-trigger {
+.tool-group > .tool-button {
   flex: 0 0 var(--toolbar-control-size);
 }
 
@@ -216,7 +205,7 @@ const tools = [
   flex: 0 0 auto;
 }
 
-.settings-stack > .tooltip-trigger {
+.settings-stack > .more-toggle {
   position: absolute;
   top: var(--sketch-space-1);
   right: var(--sketch-space-1);
