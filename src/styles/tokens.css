@@ -39,6 +39,7 @@
   --sketch-transition-expand: 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
   --sketch-z-canvas: 1;
   --sketch-z-controls: 10;
+  --sketch-z-tooltip: 101;
   --sketch-z-popover: 20;
   --sketch-z-brush-controls: 30;
 }
