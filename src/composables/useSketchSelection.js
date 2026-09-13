@@ -7,7 +7,7 @@ export function useSketchSelection({ commands, selectedIndex, pixelPoint, textLa
       return { x: point.x, y: point.y, width: layout.width, height: layout.height };
     }
     const points = (command.type === "shape" ? [command.start, command.end] : command.points).map(pixelPoint);
-    const xs = points.map((point) => point.x); const ys = points.map((point) => point.y); const padding = Math.max(displaySize(command), 8);
+    const xs = points.map((point) => point.x); const ys = points.map((point) => point.y); const padding = Math.max(displaySize(command) / 2 + 1, 8);
     return { x: Math.min(...xs) - padding, y: Math.min(...ys) - padding, width: Math.max(...xs) - Math.min(...xs) + padding * 2, height: Math.max(...ys) - Math.min(...ys) + padding * 2 };
   }
 

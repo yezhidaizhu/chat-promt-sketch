@@ -30,7 +30,7 @@ const committedCanvas = ref(null);
 const liveCanvas = ref(null);
 const textInput = ref(null);
 const {
-  activeTool, activeShape, strokeColor, strokeSize, commands, selectedIndex,
+  activeTool, activeShape, strokeColor, strokeSize, backgroundColor, commands, selectedIndex,
   activePopover, controlsOutside, canvasRatio, textEditor,
   textValue, selectionCursor, selectedCommand, hasContent,
 } = useSketchState();
@@ -38,12 +38,14 @@ const pointerCursor = ref({ x: 0, y: 0, visible: false });
 const statusMessage = ref("");
 const viewport = ref({ width: window.innerWidth, height: window.innerHeight });
 const copySucceeded = ref(false);
+const backgroundPreviewColor = ref(null);
 const drawingRatio = ref(1);
 const stageRevision = ref(0);
 const interfaceFullscreen = ref(false);
 const browserFullscreen = ref(Boolean(document.fullscreenElement));
 const isFullscreen = computed(() => interfaceFullscreen.value || browserFullscreen.value);
 const effectiveControlsOutside = computed(() => controlsOutside.value && !isFullscreen.value);
+const canvasBackgroundColor = computed(() => backgroundPreviewColor.value || backgroundColor.value);
 
 let committedContext;
 let liveContext;
@@ -91,7 +93,7 @@ const canvasCursor = computed(() => {
   if (activeTool.value === "select") return selectedIndex.value >= 0 ? selectionCursor.value : "default";
   if (activeTool.value === "text") return "text";
   if (activeTool.value === "shape") return "crosshair";
-  return "none";
+  return pointerCursor.value.visible ? "none" : "default";
 });
 const pointerCursorStyle = computed(() => ({
   width: `${Math.max(strokeSize.value, 6)}px`,
@@ -119,14 +121,16 @@ const textEditorStyle = computed(() => {
 
 const { undoStack, redoStack, canUndo, canRedo, clone, pushHistory, undo, redo } = useHistory(
   () => commands.value,
-  (restored, message) => {
+  (restored, message, context) => {
     commands.value = restored;
+    if (context?.backgroundColor) backgroundColor.value = context.backgroundColor;
     selectedIndex.value = -1;
     selectionCursor.value = "default";
     render();
     announce(message);
   },
   () => render(),
+  () => ({ backgroundColor: backgroundColor.value }),
 );
 let controls;
 const displaySize = (command) => command.worldSize ? camera.value.toScreenDistance(command.size) : command.size;
@@ -267,10 +271,18 @@ function clearContext(context, canvas) {
   context.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
 }
 
+function paintCanvasBackground(context, canvas) {
+  context.save();
+  context.fillStyle = canvasBackgroundColor.value;
+  context.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+  context.restore();
+}
+
 function render() {
   if (!committedContext || !liveContext || !committedCanvas.value || !liveCanvas.value) return;
   migrateLegacyCommands();
   clearContext(committedContext, committedCanvas.value);
+  paintCanvasBackground(committedContext, committedCanvas.value);
   clearContext(liveContext, liveCanvas.value);
   commands.value.forEach((command) => drawCommand(committedContext, command));
   if (!textEditor.value) drawSelection(liveContext);
@@ -283,6 +295,7 @@ function renderLive(command) {
 
 function renderEraserPreview(command) {
   clearContext(committedContext, committedCanvas.value);
+  paintCanvasBackground(committedContext, committedCanvas.value);
   commands.value.forEach((savedCommand) => drawCommand(committedContext, savedCommand));
   drawCommand(committedContext, command);
   clearContext(liveContext, liveCanvas.value);
@@ -380,11 +393,15 @@ function updatePointerCursor(point, visible = true) {
   pointerCursor.value = { x: point.x, y: point.y, visible };
 }
 
+function isPointInCanvas(point) {
+  return point.x >= 0 && point.y >= 0 && point.x <= stageSize.width && point.y <= stageSize.height;
+}
+
 const { onPointerDown, onCanvasDoubleClick, onPointerMove, finishPointer, onCanvasLeave } = useSketchPointer({
   activeTool, activeShape, strokeColor, strokeSize, activePopover, commands, selectedIndex, selectedCommand, selectionCursor,
   pointerCursor, clone, pushHistory, announce, selectCommand, findResizeHandle, findCommand, selectionBounds, geometryBounds,
   resizeCommand, translateCommand, normalizePoint, pixelPoint, eventPoint, render, renderLive, renderEraserPreview, startText,
-  beginTextEdit, updatePointerCursor, getResizeCursor, hitSelectionFrame, getViewScale: () => camera.value.scale,
+  beginTextEdit, updatePointerCursor, isPointInCanvas, getResizeCursor, hitSelectionFrame, getViewScale: () => camera.value.scale,
 });
 
 function cancelWindowPointer(event) {
@@ -412,7 +429,7 @@ async function copyCanvas() {
   output.width = committedCanvas.value.width;
   output.height = committedCanvas.value.height;
   const context = output.getContext("2d");
-  context.fillStyle = "#212121";
+  context.fillStyle = canvasBackgroundColor.value;
   context.fillRect(0, 0, output.width, output.height);
   context.drawImage(committedCanvas.value, 0, 0);
   output.toBlob(async (blob) => {
@@ -435,12 +452,34 @@ function requestClearCanvas(anchor) {
   else openPopover("clear", anchor, { confirm: confirmClearCanvas, cancel: closePopover });
 }
 
+function toggleBackgroundMenu(anchor) {
+  if (activePopover.value === "background") closePopover();
+  else openPopover("background", anchor, { preview: previewBackgroundColor, select: setBackgroundColor }, { get current() { return backgroundColor.value; } });
+}
+
+function previewBackgroundColor(color) {
+  if (!color || color === canvasBackgroundColor.value) return;
+  backgroundPreviewColor.value = color;
+  render();
+}
+
+function setBackgroundColor(color) {
+  if (!color || color === backgroundColor.value) return;
+  const previous = clone();
+  const previousContext = { backgroundColor: backgroundColor.value };
+  backgroundColor.value = color;
+  backgroundPreviewColor.value = null;
+  pushHistory(previous, previousContext);
+  render();
+  announce("画布背景色已更新");
+}
+
 function downloadCanvas() {
   const output = document.createElement("canvas");
   output.width = committedCanvas.value.width;
   output.height = committedCanvas.value.height;
   const context = output.getContext("2d");
-  context.fillStyle = "#212121";
+  context.fillStyle = backgroundColor.value;
   context.fillRect(0, 0, output.width, output.height);
   context.drawImage(committedCanvas.value, 0, 0);
 
@@ -521,6 +560,12 @@ watch(
 );
 
 watch(strokeSize, (size) => announce(`画笔粗细 ${size} 像素`));
+watch(activePopover, (active, previous) => {
+  if (previous === "background" && active !== "background" && backgroundPreviewColor.value) {
+    backgroundPreviewColor.value = null;
+    render();
+  }
+});
 watch(textValue, (value) => {
   if (!textEditor.value) return;
   const command = commands.value[textEditor.value.index];
@@ -589,6 +634,7 @@ onBeforeUnmount(() => {
           @clear="requestClearCanvas"
           @toggle-controls="toggleControlsOutside"
           @toggle-ratio="toggleRatioMenu"
+          @toggle-background="toggleBackgroundMenu"
           @toggle-browser-fullscreen="toggleBrowserFullscreen"
           @toggle-interface-fullscreen="toggleInterfaceFullscreen"
           @close-popover="closePopover"
@@ -596,7 +642,7 @@ onBeforeUnmount(() => {
 
 
         <div class="sketch-body">
-          <div ref="stage" class="sketch-stage">
+          <div ref="stage" class="sketch-stage" :style="{ backgroundColor: canvasBackgroundColor }">
             <canvas ref="committedCanvas" class="committed-canvas" aria-hidden="true"></canvas>
             <canvas
               ref="liveCanvas"

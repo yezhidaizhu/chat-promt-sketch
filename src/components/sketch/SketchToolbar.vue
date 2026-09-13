@@ -1,5 +1,5 @@
 <script setup>
-import { BrushCleaning, Check, ChevronsDown, ChevronsUp, Copy, Eraser, Fullscreen, Maximize2, Minimize, Minimize2, MousePointer2, Ratio, Redo2, Type, Undo2, X } from "@lucide/vue";
+import { BrushCleaning, Check, ChevronsDown, ChevronsUp, Copy, Eraser, Fullscreen, Maximize2, Minimize, Minimize2, MousePointer2, PaintBucket, Ratio, Redo2, Type, Undo2, X } from "@lucide/vue";
 import { ref } from "vue";
 import ShapePicker from "./ShapePicker.vue";
 import MoveControlsIcon from "./MoveControlsIcon.vue";
@@ -36,6 +36,7 @@ const emit = defineEmits([
   "copy",
   "clear",
   "toggle-controls",
+  "toggle-background",
   "toggle-ratio",
   "toggle-browser-fullscreen",
   "toggle-interface-fullscreen",
@@ -125,6 +126,9 @@ const tools = [
         <div v-else class="canvas-settings-menu" role="menu" aria-label="画布设置">
           <button class="more-toggle" type="button" title="收起画布设置" aria-label="收起画布设置" @click="toggleMore">
             <ChevronsUp :size="20" aria-hidden="true" />
+          </button>
+          <button type="button" role="menuitem" title="画布背景色" aria-label="画布背景色" aria-haspopup="menu" @click="selectMoreAction($event, 'toggle-background')">
+            <PaintBucket :size="18" aria-hidden="true" />
           </button>
           <button type="button" role="menuitem" title="画布比例" aria-label="画布比例" :disabled="isFullscreen" @click="selectMoreAction($event, 'toggle-ratio')">
             <Ratio :size="18" aria-hidden="true" />

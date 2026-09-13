@@ -5,7 +5,7 @@ export function useSketchPointer(options) {
     activeTool, activeShape, strokeColor, strokeSize, activePopover, commands, selectedIndex, selectedCommand, selectionCursor,
     clone, pushHistory, announce, selectCommand, findResizeHandle, findCommand, selectionBounds, geometryBounds, resizeCommand,
     translateCommand, normalizePoint, pixelPoint, eventPoint, render, renderLive, renderEraserPreview, startText, beginTextEdit,
-    updatePointerCursor, getResizeCursor, hitSelectionFrame, getViewScale,
+    updatePointerCursor, isPointInCanvas, getResizeCursor, hitSelectionFrame, getViewScale,
   } = options;
   let gesture = null;
 
@@ -28,8 +28,10 @@ export function useSketchPointer(options) {
         selectionCursor.value = getResizeCursor(resizeHandle);
         return;
       }
-      const hitIndex = hitSelectionFrame(selectedCommand.value, point, selectionBounds) ? selectedIndex.value : findCommand(point);
-      selectCommand(hitIndex);
+      const withinSelection = hitSelectionFrame(selectedCommand.value, point, selectionBounds);
+      const hitIndex = withinSelection ? selectedIndex.value : findCommand(point);
+      const nextIndex = !withinSelection && hitIndex === selectedIndex.value ? -1 : hitIndex;
+      selectCommand(nextIndex);
       if (selectedIndex.value >= 0) beginGesture(event, { type: "move", start: point, last: normalizePoint(point), previous: clone(), moved: false });
       selectionCursor.value = selectedIndex.value >= 0 ? "grabbing" : "default";
       render();
@@ -48,7 +50,7 @@ export function useSketchPointer(options) {
   }
 
   function onPointerMove(event) {
-    const point = eventPoint(event); updatePointerCursor(point);
+    const point = eventPoint(event); updatePointerCursor(point, isPointInCanvas(point));
     if (!gesture) {
       if (activeTool.value === "select") {
         const handle = findResizeHandle(point, event.pointerType);
