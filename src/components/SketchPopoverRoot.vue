@@ -22,7 +22,7 @@ function dispatch(event, value) {
 
 <template>
   <Teleport to="#sketch-popover-host">
-    <FloatingPopover :open="Boolean(content)" :anchor="popoverAnchor" @close="closePopover">
+    <FloatingPopover :open="Boolean(content)" :anchor="popoverAnchor" :placement="activePopover === 'clear' ? 'top' : 'auto'" @close="closePopover">
       <component :is="content" v-bind="popoverProps" @preview="dispatch('preview', $event)" @select="dispatch('select', $event)" @confirm="dispatch('confirm', $event)" @cancel="dispatch('cancel', $event)" />
     </FloatingPopover>
   </Teleport>

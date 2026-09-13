@@ -1,7 +1,7 @@
 <script setup>
 import { nextTick, onBeforeUnmount, ref, watch } from "vue";
 
-const props = defineProps({ open: Boolean, anchor: Object });
+const props = defineProps({ open: Boolean, anchor: Object, placement: { type: String, default: "auto" } });
 const emit = defineEmits(["close"]);
 const popover = ref(null);
 const isPositioned = ref(false);
@@ -38,8 +38,10 @@ function position() {
       width: anchor.width / scale,
     };
     const left = Math.min(Math.max((0 - originX) / scale + gap, localAnchor.left + localAnchor.width / 2 - width / 2), (window.innerWidth - originX) / scale - width - gap);
-    const top = localAnchor.bottom + gap + height <= (window.innerHeight - originY) / scale ? localAnchor.bottom + gap : localAnchor.top - gap - height;
-    element.style.transform = `translate(${Math.round(left)}px, ${Math.round(Math.max(gap, top))}px)`;
+    const fitsBelow = localAnchor.bottom + gap + height <= (window.innerHeight - originY) / scale;
+    const top = props.placement === "top" || !fitsBelow ? localAnchor.top - gap - height : localAnchor.bottom + gap;
+    const minTop = (0 - originY) / scale + gap;
+    element.style.transform = `translate(${Math.round(left)}px, ${Math.round(Math.max(minTop, top))}px)`;
     requestAnimationFrame(() => { if (props.open) isPositioned.value = true; });
   });
 }

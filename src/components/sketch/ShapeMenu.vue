@@ -20,7 +20,7 @@ const shapes = [
 </template>
 
 <style scoped>
-.shape-menu { display: grid; width: 160px; grid-template-columns: repeat(4, 32px); gap: 4px; }
+.shape-menu { display: grid; width: max-content; grid-template-columns: repeat(4, 32px); gap: 4px; }
 .shape-option { display: grid; width: 32px; height: 32px; padding: 0; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--sketch-color-text); cursor: pointer; }
 .shape-option:hover, .shape-option.is-active { background: var(--sketch-color-control-hover); }
 .shape-option:focus-visible { outline: 2px solid var(--sketch-color-focus); outline-offset: 2px; }
