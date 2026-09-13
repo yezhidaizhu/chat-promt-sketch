@@ -1,6 +1,6 @@
 import { closePopover, openPopover } from "./usePopover.js";
 
-export function useSketchControls({ state, clone, pushHistory, render, resizeCanvases, announce, commitText, onRatioChange }) {
+export function useSketchControls({ state, clone, pushHistory, render, resizeCanvases, announce, commitText, onRatioChange, getViewScale = () => 1 }) {
   const { activeTool, activeShape, strokeColor, strokeSize, selectedCommand, selectedIndex, activePopover, controlsOutside, canvasRatio } = state;
 
   function selectTool(tool) {
@@ -53,15 +53,17 @@ export function useSketchControls({ state, clone, pushHistory, render, resizeCan
     if (index < 0) state.selectionCursor.value = "default";
     const command = state.commands.value[index];
     if (command?.color) strokeColor.value = command.color;
-    if (command && ["shape", "pen"].includes(command.type)) strokeSize.value = command.size;
+    if (command && ["shape", "pen"].includes(command.type)) strokeSize.value = command.worldSize ? command.size * getViewScale() : command.size;
   }
 
   function setStrokeSize(size) {
     strokeSize.value = size;
     const command = selectedCommand.value;
-    if (!command || !["shape", "pen"].includes(command.type) || command.size === size) return;
+    if (!command || !["shape", "pen"].includes(command.type)) return;
+    const commandSize = command.worldSize ? size / getViewScale() : size;
+    if (command.size === commandSize) return;
     const previous = clone();
-    command.size = size;
+    command.size = commandSize;
     pushHistory(previous);
     announce(`对象粗细 ${size} 像素`);
   }

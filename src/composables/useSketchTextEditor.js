@@ -8,12 +8,20 @@ const minSize = 12;
 const maxSize = 160;
 
 export function useSketchTextEditor(options) {
-  const { commands, selectedIndex, activeTool, strokeColor, selectionCursor, textEditor, textValue, clone, pushHistory, announce, render, selectCommand, normalizePoint, pixelPoint, eventPoint, getStageSize, getContext, input } = options;
+  const { commands, selectedIndex, activeTool, strokeColor, selectionCursor, textEditor, textValue, clone, pushHistory, announce, render, selectCommand, normalizePoint, pixelPoint, eventPoint, getStageSize, getContext, input, getCamera, displaySize } = options;
   let transform = null;
 
+  function displayWidth(command) {
+    return command.worldSize ? getCamera().toScreenXDistance(command.width) : command.width * getStageSize().width;
+  }
+
+  function setDisplayWidth(command, width) {
+    command.width = command.worldSize ? getCamera().toWorldXDistance(width) : width / getStageSize().width;
+  }
+
   function measureTextWidth(command, text) {
-    const context = getContext(); if (!context) return Array.from(text).length * command.size * 0.6;
-    context.save(); context.font = `600 ${command.size}px Inter, sans-serif`; const width = context.measureText(text).width; context.restore(); return width;
+    const context = getContext(); const size = displaySize(command); if (!context) return Array.from(text).length * size * 0.6;
+    context.save(); context.font = `600 ${size}px Inter, sans-serif`; const width = context.measureText(text).width; context.restore(); return width;
   }
   function wrapText(command, text, width) {
     const lines = [];
@@ -21,9 +29,9 @@ export function useSketchTextEditor(options) {
     return lines.length ? lines : [""];
   }
   function textLayout(command, text = command.text) {
-    const stageSize = getStageSize(); const naturalWidth = Math.max(minWidth, ...text.split("\n").map((line) => measureTextWidth(command, line || " ")));
-    const width = command.width ? Math.max(minWidth, command.width * stageSize.width) : naturalWidth;
-    const lines = command.width ? wrapText(command, text, width) : text.split("\n"); const height = command.size * lineHeight;
+    const naturalWidth = Math.max(minWidth, ...text.split("\n").map((line) => measureTextWidth(command, line || " ")));
+    const width = command.width ? Math.max(minWidth, displayWidth(command)) : naturalWidth;
+    const lines = command.width ? wrapText(command, text, width) : text.split("\n"); const height = displaySize(command) * lineHeight;
     return { width, height: Math.max(height, lines.length * height), lineHeight: height, lines };
   }
   function textEditorBounds(command) {
@@ -31,13 +39,14 @@ export function useSketchTextEditor(options) {
     return { x: point.x - padding, y: point.y - padding, width: layout.width + padding * 2, height: layout.height + padding * 2 };
   }
   function startText(point) {
-    const stageSize = getStageSize(); const normalized = normalizePoint(point); const previous = clone();
-    commands.value.push({ type: "text", text: "", x: normalized.x, y: normalized.y, color: strokeColor.value, size: 32, width: Math.min(defaultWidth, Math.max(minWidth, stageSize.width - point.x - 24)) / stageSize.width });
+    const normalized = normalizePoint(point); const previous = clone(); const camera = getCamera();
+    const width = Math.min(defaultWidth, Math.max(minWidth, getStageSize().width - point.x - 24));
+    commands.value.push({ type: "text", text: "", x: normalized.x, y: normalized.y, color: strokeColor.value, size: camera.toWorldDistance(32), width: camera.toWorldXDistance(width), worldSize: true });
     beginTextEdit(commands.value.length - 1, previous, true);
   }
   function beginTextEdit(index, previous = clone(), isNew = false) {
-    const command = commands.value[index]; if (command?.type !== "text") return; const stageSize = getStageSize();
-    if (!command.width) command.width = Math.min(defaultWidth, textLayout(command).width) / stageSize.width;
+    const command = commands.value[index]; if (command?.type !== "text") return;
+    if (!command.width) setDisplayWidth(command, Math.min(defaultWidth, textLayout(command).width));
     selectCommand(index); textEditor.value = { index, previous, isNew }; textValue.value = command.text; render(); nextTick(() => input.value?.focusAtEnd());
   }
   function commitText() {
@@ -53,11 +62,11 @@ export function useSketchTextEditor(options) {
     return { nw: [{ x: left, y: top }, { x: right, y: bottom }], n: [{ x: centerX, y: top }, { x: centerX, y: bottom }], ne: [{ x: right, y: top }, { x: left, y: bottom }], se: [{ x: right, y: bottom }, { x: left, y: top }], s: [{ x: centerX, y: bottom }, { x: centerX, y: top }], sw: [{ x: left, y: bottom }, { x: right, y: top }] }[handleId];
   }
   function resizeTextCommand(command, point, state) {
-    const { id } = state.handle; const bounds = state.originalBounds; const stageSize = getStageSize(); const editorPadding = state.draft ? padding : 0;
-    if (["e", "w"].includes(id)) { const width = Math.max(minWidth, id === "w" ? bounds.x + bounds.width - point.x - editorPadding * 2 : point.x - bounds.x - editorPadding * 2); command.width = width / stageSize.width; command.x = (id === "w" ? bounds.x + bounds.width - width - editorPadding : bounds.x + editorPadding) / stageSize.width; command.y = (bounds.y + editorPadding) / stageSize.height; return; }
+    const { id } = state.handle; const bounds = state.originalBounds; const editorPadding = state.draft ? padding : 0;
+    if (["e", "w"].includes(id)) { const width = Math.max(minWidth, id === "w" ? bounds.x + bounds.width - point.x - editorPadding * 2 : point.x - bounds.x - editorPadding * 2); setDisplayWidth(command, width); const anchor = normalizePoint({ x: id === "w" ? bounds.x + bounds.width - width - editorPadding : bounds.x + editorPadding, y: bounds.y + editorPadding }); command.x = anchor.x; command.y = anchor.y; return; }
     const geometry = scaleGeometry(bounds, id); if (!geometry) return; const [handle, anchor] = geometry; const vector = { x: handle.x - anchor.x, y: handle.y - anchor.y }; const pointer = { x: point.x - anchor.x, y: point.y - anchor.y };
-    const raw = (pointer.x * vector.x + pointer.y * vector.y) / (vector.x ** 2 + vector.y ** 2); const contentWidth = Math.max(minWidth, bounds.width - editorPadding * 2); const scale = Math.min(maxSize / state.originalCommand.size, Math.max(Math.max(minSize / state.originalCommand.size, minWidth / contentWidth), raw));
-    command.size = Math.round(state.originalCommand.size * scale * 10) / 10; const applied = command.size / state.originalCommand.size; command.width = (contentWidth * applied) / stageSize.width; const layout = textLayout(command, state.draft ? textValue.value : command.text); const outerWidth = layout.width + editorPadding * 2; const outerHeight = layout.height + editorPadding * 2; let x = anchor.x; let y = anchor.y; if (id.includes("w")) x -= outerWidth; else if (!id.includes("e")) x -= outerWidth / 2; if (id.includes("n")) y -= outerHeight; command.x = (x + editorPadding) / stageSize.width; command.y = (y + editorPadding) / stageSize.height;
+    const raw = (pointer.x * vector.x + pointer.y * vector.y) / (vector.x ** 2 + vector.y ** 2); const contentWidth = Math.max(minWidth, bounds.width - editorPadding * 2); const originalSize = displaySize(state.originalCommand); const scale = Math.min(maxSize / originalSize, Math.max(Math.max(minSize / originalSize, minWidth / contentWidth), raw));
+    const size = Math.round(originalSize * scale * 10) / 10; command.size = command.worldSize ? getCamera().toWorldDistance(size) : size; setDisplayWidth(command, contentWidth * scale); const layout = textLayout(command, state.draft ? textValue.value : command.text); const outerWidth = layout.width + editorPadding * 2; const outerHeight = layout.height + editorPadding * 2; let x = anchor.x; let y = anchor.y; if (id.includes("w")) x -= outerWidth; else if (!id.includes("e")) x -= outerWidth / 2; if (id.includes("n")) y -= outerHeight; const normalized = normalizePoint({ x: x + editorPadding, y: y + editorPadding }); command.x = normalized.x; command.y = normalized.y;
   }
   function startTextTransform(event, type, handleId = null) { const command = commands.value[textEditor.value?.index]; if (!command) return; const point = eventPoint(event); transform = { type, handle: handleId ? { id: handleId } : null, start: normalizePoint(point), originalCommand: clone(command), originalBounds: textEditorBounds(command), draft: true }; event.currentTarget.setPointerCapture(event.pointerId); }
   function moveTextTransform(event) { if (!transform || !textEditor.value) return; const command = commands.value[textEditor.value.index]; const point = eventPoint(event); if (transform.type === "move") { const normalized = normalizePoint(point); command.x = transform.originalCommand.x + normalized.x - transform.start.x; command.y = transform.originalCommand.y + normalized.y - transform.start.y; } else resizeTextCommand(command, point, transform); }

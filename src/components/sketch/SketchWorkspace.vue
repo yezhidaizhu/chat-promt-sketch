@@ -13,7 +13,7 @@ import { useSketchTextEditor } from "../../composables/useSketchTextEditor.js";
 import { closePopover, openPopover } from "../../composables/usePopover.js";
 import { isSelectionFrameHit as hitSelectionFrame, resizeCursor as getResizeCursor } from "../../utils/hitTest.js";
 import { drawFreehand, drawShape, prepareContext } from "../../utils/sketchDrawing.js";
-import { fitContentToCanvas } from "../../utils/fitContentToCanvas.js";
+import { createSketchCamera } from "../../utils/sketchCamera.js";
 
 const props = defineProps({
   modelValue: {
@@ -38,6 +38,8 @@ const pointerCursor = ref({ x: 0, y: 0, visible: false });
 const statusMessage = ref("");
 const viewport = ref({ width: window.innerWidth, height: window.innerHeight });
 const copySucceeded = ref(false);
+const drawingRatio = ref(1);
+const stageRevision = ref(0);
 const interfaceFullscreen = ref(false);
 const browserFullscreen = ref(Boolean(document.fullscreenElement));
 const isFullscreen = computed(() => interfaceFullscreen.value || browserFullscreen.value);
@@ -62,6 +64,10 @@ const toolLabels = { select: "选择并移动", pen: "画笔", text: "文字", e
 const ratioValue = computed(() => {
   const [width, height] = canvasRatio.value.split(":").map(Number);
   return width / height;
+});
+const camera = computed(() => {
+  stageRevision.value;
+  return createSketchCamera({ width: stageSize.width, height: stageSize.height, worldAspect: drawingRatio.value });
 });
 const dialogStyle = computed(() => {
   const style = { "--sketch-ratio": ratioValue.value };
@@ -106,7 +112,7 @@ const textEditorStyle = computed(() => {
     width: `${bounds.width}px`,
     height: `${bounds.height}px`,
     color: command.color,
-    fontSize: `${command.size}px`,
+    fontSize: `${displaySize(command)}px`,
     lineHeight: textLineHeight,
   };
 });
@@ -123,20 +129,11 @@ const { undoStack, redoStack, canUndo, canRedo, clone, pushHistory, undo, redo }
   () => render(),
 );
 let controls;
-const { textLayout, textEditorBounds, startText, beginTextEdit, commitText, cancelText, resizeTextCommand, startTextTransform, moveTextTransform, finishTextTransform } = useSketchTextEditor({ commands, selectedIndex, activeTool, strokeColor, selectionCursor, textEditor, textValue, clone, pushHistory, announce, render, selectCommand: (...args) => controls.selectCommand(...args), normalizePoint, pixelPoint, eventPoint, getStageSize: () => stageSize, getContext: () => committedContext, input: textInput });
-controls = useSketchControls({ state: { activeTool, activeShape, strokeColor, strokeSize, commands, selectedIndex, activePopover, controlsOutside, canvasRatio, textEditor, selectionCursor, selectedCommand }, clone, pushHistory, render, resizeCanvases, announce, commitText, onRatioChange: selectCanvasRatioWithFit });
-const { selectTool, toggleShapeMenu, toggleControlsOutside, toggleRatioMenu, selectCanvasRatio, selectShape, selectCommand, setStrokeSize, setStrokeColor } = controls;
-const { commandBounds, geometryBounds, selectionBounds, findResizeHandle, resizeBounds, findCommand, drawSelection } = useSketchSelection({ commands, selectedIndex, pixelPoint, textLayout });
-
-function contentBounds() {
-  if (!commands.value.length) return null;
-  const bounds = commands.value.map(commandBounds);
-  const left = Math.min(...bounds.map((item) => item.x));
-  const top = Math.min(...bounds.map((item) => item.y));
-  const right = Math.max(...bounds.map((item) => item.x + item.width));
-  const bottom = Math.max(...bounds.map((item) => item.y + item.height));
-  return { x: left, y: top, width: right - left, height: bottom - top };
-}
+const displaySize = (command) => command.worldSize ? camera.value.toScreenDistance(command.size) : command.size;
+const { textLayout, textEditorBounds, startText, beginTextEdit, commitText, cancelText, resizeTextCommand, startTextTransform, moveTextTransform, finishTextTransform } = useSketchTextEditor({ commands, selectedIndex, activeTool, strokeColor, selectionCursor, textEditor, textValue, clone, pushHistory, announce, render, selectCommand: (...args) => controls.selectCommand(...args), normalizePoint, pixelPoint, eventPoint, getStageSize: () => stageSize, getContext: () => committedContext, input: textInput, getCamera: () => camera.value, displaySize });
+controls = useSketchControls({ state: { activeTool, activeShape, strokeColor, strokeSize, commands, selectedIndex, activePopover, controlsOutside, canvasRatio, textEditor, selectionCursor, selectedCommand }, clone, pushHistory, render, resizeCanvases, announce, commitText, onRatioChange: changeCanvasRatio, getViewScale: () => camera.value.scale });
+const { selectTool, toggleShapeMenu, toggleControlsOutside, toggleRatioMenu, selectShape, selectCommand, setStrokeSize, setStrokeColor } = controls;
+const { commandBounds, geometryBounds, selectionBounds, findResizeHandle, resizeBounds, findCommand, drawSelection } = useSketchSelection({ commands, selectedIndex, pixelPoint, textLayout, displaySize });
 
 function waitForCanvasTransition() {
   return new Promise((resolve) => {
@@ -156,37 +153,28 @@ function waitForCanvasTransition() {
   });
 }
 
-async function selectCanvasRatioWithFit(ratio) {
+async function changeCanvasRatio(ratio) {
   if (ratio === canvasRatio.value) return;
-  const previousSize = { ...stageSize };
-  const bounds = contentBounds();
   canvasRatio.value = ratio;
+  if (!commands.value.length) drawingRatio.value = ratioValue.value;
   closePopover();
   await nextTick();
   await waitForCanvasTransition();
   resizeCanvases();
-  fitContentToCanvas(commands.value, previousSize, stageSize, bounds);
-  selectedIndex.value = -1;
-  render();
   announce(`画布比例 ${ratio}`);
 }
 
 async function toggleInterfaceFullscreen() {
-  const previousSize = { ...stageSize };
-  const bounds = contentBounds();
   interfaceFullscreen.value = !interfaceFullscreen.value;
   closePopover();
   await nextTick();
   await waitForCanvasTransition();
   resizeCanvases();
-  fitContentToCanvas(commands.value, previousSize, stageSize, bounds);
-  selectedIndex.value = -1;
-  render();
 }
 
 async function toggleBrowserFullscreen() {
   try {
-    browserFullscreenTransition = { size: { ...stageSize }, bounds: contentBounds() };
+    browserFullscreenTransition = true;
     if (document.fullscreenElement) await document.exitFullscreen();
     else await document.documentElement.requestFullscreen();
   } catch {
@@ -197,14 +185,10 @@ async function toggleBrowserFullscreen() {
 async function syncBrowserFullscreen() {
   browserFullscreen.value = Boolean(document.fullscreenElement);
   if (!browserFullscreenTransition) return;
-  const transition = browserFullscreenTransition;
   browserFullscreenTransition = null;
   await nextTick();
   await waitForCanvasTransition();
   resizeCanvases();
-  fitContentToCanvas(commands.value, transition.size, stageSize, transition.bounds);
-  selectedIndex.value = -1;
-  render();
 }
 
 function announce(message) {
@@ -215,19 +199,11 @@ function announce(message) {
 }
 
 function normalizePoint(point) {
-  return {
-    x: point.x / stageSize.width,
-    y: point.y / stageSize.height,
-    pressure: point.pressure ?? 0.5,
-  };
+  return camera.value.toWorld(point);
 }
 
 function pixelPoint(point) {
-  return {
-    x: point.x * stageSize.width,
-    y: point.y * stageSize.height,
-    pressure: point.pressure ?? 0.5,
-  };
+  return camera.value.toScreen(point);
 }
 
 function eventPoint(event) {
@@ -241,13 +217,35 @@ function eventPoint(event) {
   };
 }
 
+function migrateLegacyCommands() {
+  const activeCamera = camera.value;
+  commands.value.forEach((command) => {
+    if (command.worldSize) return;
+    const toWorld = (point) => activeCamera.toWorld({ x: point.x * stageSize.width, y: point.y * stageSize.height, pressure: point.pressure });
+    if (command.type === "text") {
+      const point = toWorld(command);
+      command.x = point.x;
+      command.y = point.y;
+      command.width = activeCamera.toWorldXDistance((command.width || 0) * stageSize.width);
+    } else if (command.type === "shape") {
+      command.start = toWorld(command.start);
+      command.end = toWorld(command.end);
+    } else {
+      command.points = command.points.map(toWorld);
+    }
+    command.size = activeCamera.toWorldDistance(command.size);
+    command.worldSize = true;
+  });
+}
+
 function drawCommand(context, command, preview = false) {
-  if (["pen", "eraser"].includes(command.type)) {
-    drawFreehand(context, command, pixelPoint, preview);
+  const drawable = command.worldSize ? { ...command, size: camera.value.toScreenDistance(command.size) } : command;
+  if (["pen", "eraser"].includes(drawable.type)) {
+    drawFreehand(context, drawable, pixelPoint, preview);
     return;
   }
-  if (command.type === "shape") {
-    drawShape(context, command, pixelPoint);
+  if (drawable.type === "shape") {
+    drawShape(context, drawable, pixelPoint);
     return;
   }
   if (command.type === "text") {
@@ -256,7 +254,7 @@ function drawCommand(context, command, preview = false) {
     const layout = textLayout(command);
     context.save();
     context.fillStyle = command.color;
-    context.font = `600 ${command.size}px Inter, sans-serif`;
+    context.font = `600 ${displaySize(command)}px Inter, sans-serif`;
     context.textBaseline = "top";
     layout.lines.forEach((line, index) => {
       context.fillText(line, point.x, point.y + index * layout.lineHeight, layout.width);
@@ -271,6 +269,7 @@ function clearContext(context, canvas) {
 
 function render() {
   if (!committedContext || !liveContext || !committedCanvas.value || !liveCanvas.value) return;
+  migrateLegacyCommands();
   clearContext(committedContext, committedCanvas.value);
   clearContext(liveContext, liveCanvas.value);
   commands.value.forEach((command) => drawCommand(committedContext, command));
@@ -295,6 +294,7 @@ function resizeCanvases() {
   const height = stage.value.clientHeight;
   if (!width || !height) return;
   stageSize = { width, height };
+  stageRevision.value += 1;
   const dpr = window.devicePixelRatio || 1;
   [committedCanvas.value, liveCanvas.value].forEach((canvas) => {
     canvas.width = Math.max(1, Math.round(width * dpr));
@@ -336,7 +336,7 @@ function resizeCommand(command, point, gestureState) {
   }
 
   if (command.type === "shape") {
-    const padding = command.size / 2 + 1;
+    const padding = displaySize(command) / 2 + 1;
     const targetSelection = resizeBounds(gestureState.originalSelectionBounds, handle.id, point);
     const left = Math.min(targetSelection.x, targetSelection.x + targetSelection.width) + padding;
     const right = Math.max(targetSelection.x, targetSelection.x + targetSelection.width) - padding;
@@ -354,7 +354,7 @@ function resizeCommand(command, point, gestureState) {
 
   if (command.type === "pen") {
     const originalBounds = gestureState.originalBounds;
-    const padding = command.size / 2 + 1;
+    const padding = displaySize(command) / 2 + 1;
     const targetSelection = resizeBounds(gestureState.originalSelectionBounds, handle.id, point);
     const targetGeometry = {
       x: targetSelection.x + padding,
@@ -384,13 +384,18 @@ const { onPointerDown, onCanvasDoubleClick, onPointerMove, finishPointer, onCanv
   activeTool, activeShape, strokeColor, strokeSize, activePopover, commands, selectedIndex, selectedCommand, selectionCursor,
   pointerCursor, clone, pushHistory, announce, selectCommand, findResizeHandle, findCommand, selectionBounds, geometryBounds,
   resizeCommand, translateCommand, normalizePoint, pixelPoint, eventPoint, render, renderLive, renderEraserPreview, startText,
-  beginTextEdit, updatePointerCursor, getResizeCursor, hitSelectionFrame,
+  beginTextEdit, updatePointerCursor, getResizeCursor, hitSelectionFrame, getViewScale: () => camera.value.scale,
 });
+
+function cancelWindowPointer(event) {
+  finishPointer(event, true);
+}
 
 function confirmClearCanvas() {
   if (!hasContent.value) return;
   const previous = clone();
   commands.value = [];
+  drawingRatio.value = ratioValue.value;
   selectedIndex.value = -1;
   selectionCursor.value = "default";
   closePopover();
@@ -483,10 +488,10 @@ function onKeydown(event) {
     const previous = clone();
     const distance = event.shiftKey ? 10 : 1;
     const offsets = {
-      ArrowUp: [0, -distance / stageSize.height],
-      ArrowRight: [distance / stageSize.width, 0],
-      ArrowDown: [0, distance / stageSize.height],
-      ArrowLeft: [-distance / stageSize.width, 0],
+      ArrowUp: [0, -camera.value.toWorldDistance(distance)],
+      ArrowRight: [camera.value.toWorldXDistance(distance), 0],
+      ArrowDown: [0, camera.value.toWorldDistance(distance)],
+      ArrowLeft: [-camera.value.toWorldXDistance(distance), 0],
     };
     translateCommand(selectedCommand.value, ...offsets[event.key]);
     pushHistory(previous);
@@ -523,6 +528,7 @@ watch(textValue, (value) => {
 });
 
 onMounted(() => {
+  drawingRatio.value = ratioValue.value;
   committedContext = committedCanvas.value.getContext("2d");
   liveContext = liveCanvas.value.getContext("2d");
   resizeObserver = new ResizeObserver(() => {
@@ -530,6 +536,8 @@ onMounted(() => {
   });
   resizeObserver.observe(stage.value);
   window.addEventListener("resize", updateViewport);
+  window.addEventListener("pointerup", finishPointer);
+  window.addEventListener("pointercancel", cancelWindowPointer);
   document.addEventListener("fullscreenchange", syncBrowserFullscreen);
   if (props.modelValue) {
     nextTick(() => {
@@ -543,6 +551,8 @@ onBeforeUnmount(() => {
   resizeObserver?.disconnect();
   clearTimeout(copyFeedbackTimer);
   window.removeEventListener("resize", updateViewport);
+  window.removeEventListener("pointerup", finishPointer);
+  window.removeEventListener("pointercancel", cancelWindowPointer);
   document.removeEventListener("fullscreenchange", syncBrowserFullscreen);
 });
 </script>

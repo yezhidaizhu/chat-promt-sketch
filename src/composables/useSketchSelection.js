@@ -1,13 +1,13 @@
 import { isCommandHit } from "../utils/hitTest.js";
 
-export function useSketchSelection({ commands, selectedIndex, pixelPoint, textLayout }) {
+export function useSketchSelection({ commands, selectedIndex, pixelPoint, textLayout, displaySize = (command) => command.size }) {
   function commandBounds(command) {
     if (command.type === "text") {
       const point = pixelPoint(command); const layout = textLayout(command);
       return { x: point.x, y: point.y, width: layout.width, height: layout.height };
     }
     const points = (command.type === "shape" ? [command.start, command.end] : command.points).map(pixelPoint);
-    const xs = points.map((point) => point.x); const ys = points.map((point) => point.y); const padding = Math.max(command.size, 8);
+    const xs = points.map((point) => point.x); const ys = points.map((point) => point.y); const padding = Math.max(displaySize(command), 8);
     return { x: Math.min(...xs) - padding, y: Math.min(...ys) - padding, width: Math.max(...xs) - Math.min(...xs) + padding * 2, height: Math.max(...ys) - Math.min(...ys) + padding * 2 };
   }
 
@@ -25,7 +25,7 @@ export function useSketchSelection({ commands, selectedIndex, pixelPoint, textLa
   }
 
   function selectionBounds(command) {
-    const bounds = geometryBounds(command); const padding = ["shape", "pen"].includes(command.type) ? command.size / 2 + 1 : 0;
+    const bounds = geometryBounds(command); const padding = ["shape", "pen"].includes(command.type) ? displaySize(command) / 2 + 1 : 0;
     return { x: bounds.x - padding, y: bounds.y - padding, width: bounds.width + padding * 2, height: bounds.height + padding * 2 };
   }
 
@@ -50,7 +50,8 @@ export function useSketchSelection({ commands, selectedIndex, pixelPoint, textLa
   function findCommand(point) {
     for (let index = commands.value.length - 1; index >= 0; index -= 1) {
       const command = commands.value[index];
-      if (command.type !== "eraser" && isCommandHit(command, point, pixelPoint, commandBounds)) return index;
+      const displayCommand = command.worldSize ? { ...command, size: displaySize(command) } : command;
+      if (command.type !== "eraser" && isCommandHit(displayCommand, point, pixelPoint, commandBounds)) return index;
     }
     return -1;
   }

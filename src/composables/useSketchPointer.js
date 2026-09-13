@@ -5,36 +5,39 @@ export function useSketchPointer(options) {
     activeTool, activeShape, strokeColor, strokeSize, activePopover, commands, selectedIndex, selectedCommand, selectionCursor,
     clone, pushHistory, announce, selectCommand, findResizeHandle, findCommand, selectionBounds, geometryBounds, resizeCommand,
     translateCommand, normalizePoint, pixelPoint, eventPoint, render, renderLive, renderEraserPreview, startText, beginTextEdit,
-    updatePointerCursor, getResizeCursor, hitSelectionFrame,
+    updatePointerCursor, getResizeCursor, hitSelectionFrame, getViewScale,
   } = options;
   let gesture = null;
+
+  function beginGesture(event, nextGesture, capture = true) {
+    gesture = { ...nextGesture, pointerId: event.pointerId, captureTarget: event.currentTarget };
+    if (capture) event.currentTarget.setPointerCapture(event.pointerId);
+  }
 
   function onPointerDown(event) {
     if (event.button !== undefined && event.button !== 0) return;
     closePopover();
     const point = eventPoint(event);
     updatePointerCursor(point);
-    if (activeTool.value === "text") { gesture = { type: "text", point }; return; }
+    if (activeTool.value === "text") { beginGesture(event, { type: "text", point }, false); return; }
     if (activeTool.value === "select") {
       const resizeHandle = findResizeHandle(point, event.pointerType);
       if (resizeHandle) {
         const command = commands.value[selectedIndex.value];
-        gesture = { type: "resize", handle: resizeHandle, previous: clone(), originalCommand: clone(command), originalBounds: ["shape", "pen"].includes(command.type) ? geometryBounds(command) : selectionBounds(command), originalSelectionBounds: selectionBounds(command), moved: false };
+        beginGesture(event, { type: "resize", handle: resizeHandle, previous: clone(), originalCommand: clone(command), originalBounds: ["shape", "pen"].includes(command.type) ? geometryBounds(command) : selectionBounds(command), originalSelectionBounds: selectionBounds(command), moved: false });
         selectionCursor.value = getResizeCursor(resizeHandle);
-        event.currentTarget.setPointerCapture(event.pointerId);
         return;
       }
       const hitIndex = hitSelectionFrame(selectedCommand.value, point, selectionBounds) ? selectedIndex.value : findCommand(point);
       selectCommand(hitIndex);
-      gesture = selectedIndex.value >= 0 ? { type: "move", start: point, last: normalizePoint(point), previous: clone(), moved: false } : null;
+      if (selectedIndex.value >= 0) beginGesture(event, { type: "move", start: point, last: normalizePoint(point), previous: clone(), moved: false });
       selectionCursor.value = selectedIndex.value >= 0 ? "grabbing" : "default";
-      if (gesture) event.currentTarget.setPointerCapture(event.pointerId);
       render();
       return;
     }
-    event.currentTarget.setPointerCapture(event.pointerId);
     const normalized = normalizePoint(point);
-    gesture = { type: activeTool.value, previous: clone(), command: activeTool.value === "shape" ? { type: "shape", shape: activeShape.value, start: normalized, end: normalized, color: strokeColor.value, size: strokeSize.value } : { type: activeTool.value, points: [normalized], color: strokeColor.value, size: strokeSize.value, usePressure: activeTool.value === "pen" && event.pointerType === "pen" } };
+    const worldSize = strokeSize.value / getViewScale();
+    beginGesture(event, { type: activeTool.value, previous: clone(), command: activeTool.value === "shape" ? { type: "shape", shape: activeShape.value, start: normalized, end: normalized, color: strokeColor.value, size: worldSize, worldSize: true } : { type: activeTool.value, points: [normalized], color: strokeColor.value, size: worldSize, worldSize: true, usePressure: activeTool.value === "pen" && event.pointerType === "pen" } });
   }
 
   function onCanvasDoubleClick(event) {
@@ -68,8 +71,8 @@ export function useSketchPointer(options) {
   }
 
   function finishPointer(event, cancelled = false) {
-    if (!gesture) return;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (!gesture || event.pointerId !== gesture.pointerId) return;
+    if (gesture.captureTarget?.hasPointerCapture(gesture.pointerId)) gesture.captureTarget.releasePointerCapture(gesture.pointerId);
     if (cancelled) { if (["move", "resize"].includes(gesture.type)) commands.value = gesture.previous; gesture = null; selectionCursor.value = selectedIndex.value >= 0 ? "grab" : "default"; render(); return; }
     if (gesture.type === "text") { const { point } = gesture; gesture = null; startText(point); return; }
     if (["move", "resize"].includes(gesture.type)) {
