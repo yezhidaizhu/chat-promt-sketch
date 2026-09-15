@@ -11,9 +11,10 @@ import { useSketchControls } from "../../composables/useSketchControls.js";
 import { useSketchPointer } from "../../composables/useSketchPointer.js";
 import { useSketchSelection } from "../../composables/useSketchSelection.js";
 import { useSketchTextEditor } from "../../composables/useSketchTextEditor.js";
+import { useSketchKonvaCanvas } from "../../composables/useSketchKonvaCanvas.js";
 import { closePopover, openPopover } from "../../composables/usePopover.js";
 import { isSelectionFrameHit as hitSelectionFrame, resizeCursor as getResizeCursor } from "../../utils/hitTest.js";
-import { drawFreehand, drawShape, prepareContext } from "../../utils/sketchDrawing.js";
+import { drawFreehand, drawShape } from "../../utils/sketchDrawing.js";
 import { createSketchCamera } from "../../utils/sketchCamera.js";
 import { locale } from "../../locales/index.js";
 
@@ -27,9 +28,6 @@ const props = defineProps({
 const emit = defineEmits(["update:modelValue", "download"]);
 
 const dialog = ref(null);
-const stage = ref(null);
-const committedCanvas = ref(null);
-const liveCanvas = ref(null);
 const textInput = ref(null);
 const {
   activeTool, activeShape, strokeColor, strokeSize, backgroundColor, commands, selectedIndex,
@@ -42,16 +40,12 @@ const viewport = ref({ width: window.innerWidth, height: window.innerHeight });
 const copySucceeded = ref(false);
 const backgroundPreviewColor = ref(null);
 const drawingRatio = ref(1);
-const stageRevision = ref(0);
 const interfaceFullscreen = ref(false);
 const browserFullscreen = ref(Boolean(document.fullscreenElement));
 const isFullscreen = computed(() => interfaceFullscreen.value || browserFullscreen.value);
 const effectiveControlsOutside = computed(() => controlsOutside.value && !isFullscreen.value);
 const canvasBackgroundColor = computed(() => backgroundPreviewColor.value || backgroundColor.value);
 
-let committedContext;
-let liveContext;
-let stageSize = { width: 1, height: 1 };
 let textTransform = null;
 let resizeObserver;
 let copyFeedbackTimer;
@@ -70,10 +64,6 @@ const ratioValue = computed(() => {
   const [width, height] = canvasRatio.value.split(":").map(Number);
   return width / height;
 });
-const camera = computed(() => {
-  stageRevision.value;
-  return createSketchCamera({ width: stageSize.width, height: stageSize.height, worldAspect: drawingRatio.value });
-});
 const dialogStyle = computed(() => {
   const style = { "--sketch-ratio": ratioValue.value };
   if (interfaceFullscreen.value || !effectiveControlsOutside.value) return style;
@@ -91,8 +81,62 @@ const dialogStyle = computed(() => {
     width: `${canvasWidth}px`,
   };
 });
+let selectionApi;
+const {
+  container: stage,
+  stage: konvaStage,
+  backgroundLayer,
+  backgroundRect,
+  contentLayer,
+  overlayLayer,
+  stageSize,
+  zoom,
+  pan,
+  panMode,
+  spacePressed,
+  isPanning,
+  minZoom,
+  maxZoom,
+  zoomPercent,
+  stageConfig,
+  backgroundConfig,
+  measurementContext,
+  drawContentScene,
+  drawOverlayScene,
+  render,
+  renderLive,
+  renderEraserPreview,
+  resizeCanvases,
+  eventPoint,
+  zoomBy,
+  resetView,
+  handleWheel,
+  setPanMode,
+  setSpacePressed,
+  startPan,
+  movePan,
+  finishPan,
+  cancelPan,
+  createOutputCanvas,
+} = useSketchKonvaCanvas({
+  commands,
+  backgroundColor: canvasBackgroundColor,
+  isTextEditing: () => Boolean(textEditor.value),
+  beforeRender: migrateLegacyCommands,
+  drawCommand,
+  drawSelection: (context) => selectionApi?.drawSelection(context),
+});
+const camera = computed(() => createSketchCamera({
+  width: stageSize.value.width,
+  height: stageSize.value.height,
+  worldAspect: drawingRatio.value,
+  zoom: zoom.value,
+  pan: pan.value,
+}));
 
 const canvasCursor = computed(() => {
+  if (isPanning.value) return "grabbing";
+  if (panMode.value || spacePressed.value) return "grab";
   if (activeTool.value === "select") return selectedIndex.value >= 0 ? selectionCursor.value : "default";
   if (activeTool.value === "text") return "text";
   if (activeTool.value === "shape") return "crosshair";
@@ -104,7 +148,7 @@ const pointerCursorStyle = computed(() => ({
   backgroundColor: activeTool.value === "eraser" ? "#a8a8a8" : strokeColor.value,
   left: `${pointerCursor.value.x}px`,
   top: `${pointerCursor.value.y}px`,
-  opacity: pointerCursor.value.visible && ["pen", "eraser"].includes(activeTool.value) ? 1 : 0,
+  opacity: pointerCursor.value.visible && !panMode.value && !spacePressed.value && !isPanning.value && ["pen", "eraser"].includes(activeTool.value) ? 1 : 0,
 }));
 const textEditorStyle = computed(() => {
   if (!textEditor.value) return {};
@@ -137,10 +181,11 @@ const { undoStack, redoStack, canUndo, canRedo, clone, pushHistory, undo, redo }
 );
 let controls;
 const displaySize = (command) => command.worldSize ? camera.value.toScreenDistance(command.size) : command.size;
-const { textLayout, textEditorBounds, startText, beginTextEdit, commitText, cancelText, resizeTextCommand, startTextTransform, moveTextTransform, finishTextTransform } = useSketchTextEditor({ commands, selectedIndex, activeTool, strokeColor, selectionCursor, textEditor, textValue, clone, pushHistory, announce, render, selectCommand: (...args) => controls.selectCommand(...args), normalizePoint, pixelPoint, eventPoint, getStageSize: () => stageSize, getContext: () => committedContext, input: textInput, getCamera: () => camera.value, displaySize });
+const { textLayout, textEditorBounds, startText, beginTextEdit, commitText, cancelText, resizeTextCommand, startTextTransform, moveTextTransform, finishTextTransform } = useSketchTextEditor({ commands, selectedIndex, activeTool, strokeColor, selectionCursor, textEditor, textValue, clone, pushHistory, announce, render, selectCommand: (...args) => controls.selectCommand(...args), normalizePoint, pixelPoint, eventPoint, getStageSize: () => stageSize.value, getContext: () => measurementContext, input: textInput, getCamera: () => camera.value, displaySize });
 controls = useSketchControls({ state: { activeTool, activeShape, strokeColor, strokeSize, commands, selectedIndex, activePopover, controlsOutside, canvasRatio, textEditor, selectionCursor, selectedCommand }, clone, pushHistory, render, resizeCanvases, announce, commitText, onRatioChange: changeCanvasRatio, getViewScale: () => camera.value.scale });
-const { selectTool, toggleShapeMenu, toggleControlsOutside, toggleRatioMenu, selectShape, selectCommand, setStrokeSize, setStrokeColor } = controls;
-const { commandBounds, geometryBounds, selectionBounds, findResizeHandle, resizeBounds, findCommand, drawSelection } = useSketchSelection({ commands, selectedIndex, pixelPoint, textLayout, displaySize });
+const { selectTool: selectDrawingTool, toggleShapeMenu: openShapeMenu, toggleControlsOutside, toggleRatioMenu, selectShape, selectCommand, setStrokeSize, setStrokeColor } = controls;
+selectionApi = useSketchSelection({ commands, selectedIndex, pixelPoint, textLayout, displaySize });
+const { commandBounds, geometryBounds, selectionBounds, findResizeHandle, resizeBounds, findCommand } = selectionApi;
 
 function waitForCanvasTransition() {
   return new Promise((resolve) => {
@@ -213,27 +258,16 @@ function pixelPoint(point) {
   return camera.value.toScreen(point);
 }
 
-function eventPoint(event) {
-  const bounds = liveCanvas.value.getBoundingClientRect();
-  const scaleX = liveCanvas.value.clientWidth / bounds.width;
-  const scaleY = liveCanvas.value.clientHeight / bounds.height;
-  return {
-    x: (event.clientX - bounds.left) * scaleX,
-    y: (event.clientY - bounds.top) * scaleY,
-    pressure: event.pressure || 0.5,
-  };
-}
-
 function migrateLegacyCommands() {
   const activeCamera = camera.value;
   commands.value.forEach((command) => {
     if (command.worldSize) return;
-    const toWorld = (point) => activeCamera.toWorld({ x: point.x * stageSize.width, y: point.y * stageSize.height, pressure: point.pressure });
+    const toWorld = (point) => activeCamera.toWorld({ x: point.x * stageSize.value.width, y: point.y * stageSize.value.height, pressure: point.pressure });
     if (command.type === "text") {
       const point = toWorld(command);
       command.x = point.x;
       command.y = point.y;
-      command.width = activeCamera.toWorldXDistance((command.width || 0) * stageSize.width);
+      command.width = activeCamera.toWorldXDistance((command.width || 0) * stageSize.value.width);
     } else if (command.type === "shape") {
       command.start = toWorld(command.start);
       command.end = toWorld(command.end);
@@ -268,57 +302,6 @@ function drawCommand(context, command, preview = false) {
     });
     context.restore();
   }
-}
-
-function clearContext(context, canvas) {
-  context.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
-}
-
-function paintCanvasBackground(context, canvas) {
-  context.save();
-  context.fillStyle = canvasBackgroundColor.value;
-  context.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);
-  context.restore();
-}
-
-function render() {
-  if (!committedContext || !liveContext || !committedCanvas.value || !liveCanvas.value) return;
-  migrateLegacyCommands();
-  clearContext(committedContext, committedCanvas.value);
-  paintCanvasBackground(committedContext, committedCanvas.value);
-  clearContext(liveContext, liveCanvas.value);
-  commands.value.forEach((command) => drawCommand(committedContext, command));
-  if (!textEditor.value) drawSelection(liveContext);
-}
-
-function renderLive(command) {
-  clearContext(liveContext, liveCanvas.value);
-  drawCommand(liveContext, command, true);
-}
-
-function renderEraserPreview(command) {
-  clearContext(committedContext, committedCanvas.value);
-  paintCanvasBackground(committedContext, committedCanvas.value);
-  commands.value.forEach((savedCommand) => drawCommand(committedContext, savedCommand));
-  drawCommand(committedContext, command);
-  clearContext(liveContext, liveCanvas.value);
-}
-
-function resizeCanvases() {
-  if (!stage.value) return;
-  const width = stage.value.clientWidth;
-  const height = stage.value.clientHeight;
-  if (!width || !height) return;
-  stageSize = { width, height };
-  stageRevision.value += 1;
-  const dpr = window.devicePixelRatio || 1;
-  [committedCanvas.value, liveCanvas.value].forEach((canvas) => {
-    canvas.width = Math.max(1, Math.round(width * dpr));
-    canvas.height = Math.max(1, Math.round(height * dpr));
-  });
-  prepareContext(committedContext);
-  prepareContext(liveContext);
-  render();
 }
 
 function updateViewport() {
@@ -397,7 +380,7 @@ function updatePointerCursor(point, visible = true) {
 }
 
 function isPointInCanvas(point) {
-  return point.x >= 0 && point.y >= 0 && point.x <= stageSize.width && point.y <= stageSize.height;
+  return point.x >= 0 && point.y >= 0 && point.x <= stageSize.value.width && point.y <= stageSize.value.height;
 }
 
 const { onPointerDown, onCanvasDoubleClick, onPointerMove, finishPointer, onCanvasLeave } = useSketchPointer({
@@ -407,8 +390,53 @@ const { onPointerDown, onCanvasDoubleClick, onPointerMove, finishPointer, onCanv
   beginTextEdit, updatePointerCursor, isPointInCanvas, getResizeCursor, hitSelectionFrame, getViewScale: () => camera.value.scale,
 });
 
+function handleStagePointerDown(event) {
+  if (startPan(event)) {
+    closePopover();
+    pointerCursor.value.visible = false;
+    return;
+  }
+  onPointerDown(event);
+}
+
+function handleStagePointerMove(event) {
+  if (movePan(event)) return;
+  onPointerMove(event);
+}
+
+function finishStagePointer(event, cancelled = false) {
+  if (finishPan(event)) return;
+  finishPointer(event, cancelled);
+}
+
 function cancelWindowPointer(event) {
-  finishPointer(event, true);
+  finishStagePointer(event, true);
+}
+
+function zoomCanvas(factor) {
+  if (!zoomBy(factor)) return;
+  announce(`画布缩放 ${zoomPercent.value}%`);
+}
+
+function resetCanvasView() {
+  if (!resetView()) return;
+  announce("画布视图已重置");
+}
+
+function toggleCanvasPan() {
+  setPanMode();
+  pointerCursor.value.visible = false;
+  announce(panMode.value ? "画布平移已开启" : "画布平移已关闭");
+}
+
+function selectTool(tool) {
+  setPanMode(false);
+  selectDrawingTool(tool);
+}
+
+function toggleShapeMenu(anchor) {
+  setPanMode(false);
+  openShapeMenu(anchor);
 }
 
 function confirmClearCanvas() {
@@ -420,6 +448,7 @@ function confirmClearCanvas() {
   selectionCursor.value = "default";
   closePopover();
   pushHistory(previous);
+  resetView();
   announce("画布已清空");
 }
 
@@ -428,13 +457,8 @@ async function copyCanvas() {
     announce("当前环境不支持复制 PNG");
     return;
   }
-  const output = document.createElement("canvas");
-  output.width = committedCanvas.value.width;
-  output.height = committedCanvas.value.height;
-  const context = output.getContext("2d");
-  context.fillStyle = canvasBackgroundColor.value;
-  context.fillRect(0, 0, output.width, output.height);
-  context.drawImage(committedCanvas.value, 0, 0);
+  const output = createOutputCanvas();
+  if (!output) return;
   output.toBlob(async (blob) => {
     if (!blob) return;
     try {
@@ -478,13 +502,8 @@ function setBackgroundColor(color) {
 }
 
 function downloadCanvas() {
-  const output = document.createElement("canvas");
-  output.width = committedCanvas.value.width;
-  output.height = committedCanvas.value.height;
-  const context = output.getContext("2d");
-  context.fillStyle = backgroundColor.value;
-  context.fillRect(0, 0, output.width, output.height);
-  context.drawImage(committedCanvas.value, 0, 0);
+  const output = createOutputCanvas();
+  if (!output) return;
 
   const link = document.createElement("a");
   link.download = `sketch-${new Date().toISOString().slice(0, 10)}.png`;
@@ -503,10 +522,21 @@ function onKeydown(event) {
   if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target.isContentEditable) {
     return;
   }
+  if (event.code === "Space" && target === stage.value) {
+    event.preventDefault();
+    setSpacePressed(true);
+    pointerCursor.value.visible = false;
+    return;
+  }
   const modifier = event.metaKey || event.ctrlKey;
   if (modifier && event.key.toLowerCase() === "z") {
     event.preventDefault();
     event.shiftKey ? redo() : undo();
+  }
+  if (event.key === "Escape" && panMode.value) {
+    setPanMode(false);
+    announce("画布平移已关闭");
+    return;
   }
   if (event.key === "Escape" && selectedIndex.value >= 0) {
     selectedIndex.value = -1;
@@ -543,6 +573,10 @@ function onKeydown(event) {
   }
 }
 
+function onKeyup(event) {
+  if (event.code === "Space") setSpacePressed(false);
+}
+
 watch(
   () => props.modelValue,
   async (isOpen) => {
@@ -551,7 +585,7 @@ watch(
     if (isOpen) {
       await nextTick();
       resizeCanvases();
-      liveCanvas.value.focus();
+      stage.value.focus();
     }
   },
 );
@@ -571,20 +605,19 @@ watch(textValue, (value) => {
 
 onMounted(() => {
   drawingRatio.value = ratioValue.value;
-  committedContext = committedCanvas.value.getContext("2d");
-  liveContext = liveCanvas.value.getContext("2d");
   resizeObserver = new ResizeObserver(() => {
     if (props.modelValue) resizeCanvases();
   });
   resizeObserver.observe(stage.value);
   window.addEventListener("resize", updateViewport);
-  window.addEventListener("pointerup", finishPointer);
+  window.addEventListener("pointerup", finishStagePointer);
   window.addEventListener("pointercancel", cancelWindowPointer);
+  window.addEventListener("blur", cancelPan);
   document.addEventListener("fullscreenchange", syncBrowserFullscreen);
   if (props.modelValue) {
     nextTick(() => {
       resizeCanvases();
-      liveCanvas.value.focus();
+      stage.value.focus();
     });
   }
 });
@@ -592,9 +625,11 @@ onMounted(() => {
 onBeforeUnmount(() => {
   resizeObserver?.disconnect();
   clearTimeout(copyFeedbackTimer);
+  cancelPan();
   window.removeEventListener("resize", updateViewport);
-  window.removeEventListener("pointerup", finishPointer);
+  window.removeEventListener("pointerup", finishStagePointer);
   window.removeEventListener("pointercancel", cancelWindowPointer);
+  window.removeEventListener("blur", cancelPan);
   document.removeEventListener("fullscreenchange", syncBrowserFullscreen);
 });
 </script>
@@ -603,7 +638,7 @@ onBeforeUnmount(() => {
   <Teleport to="body">
     <div v-show="modelValue" class="sketch-modal" :class="{ 'is-interface-fullscreen': interfaceFullscreen }">
       <div class="sketch-backdrop"></div>
-      <div ref="dialog" class="sketch-dialog" :style="dialogStyle" role="dialog" aria-modal="true" aria-labelledby="sketch-dialog-title" tabindex="-1" @keydown="onKeydown">
+      <div ref="dialog" class="sketch-dialog" :style="dialogStyle" role="dialog" aria-modal="true" aria-labelledby="sketch-dialog-title" tabindex="-1" @keydown="onKeydown" @keyup="onKeyup">
       <section class="sketch-editor" :class="{ 'is-controls-outside': effectiveControlsOutside }">
           <h2 id="sketch-dialog-title" class="sr-only">{{ copy.labels.dialog }}</h2>
         <div id="sketch-popover-host"></div>
@@ -619,6 +654,10 @@ onBeforeUnmount(() => {
           :is-interface-fullscreen="interfaceFullscreen"
           :has-content="hasContent"
           :controls-outside="effectiveControlsOutside"
+          :zoom-percent="zoomPercent"
+          :pan-active="panMode"
+          :can-zoom-in="zoom < maxZoom"
+          :can-zoom-out="zoom > minZoom"
           @close="closeDialog"
           @select-tool="selectTool"
           @toggle-shapes="toggleShapeMenu"
@@ -631,28 +670,42 @@ onBeforeUnmount(() => {
           @toggle-background="toggleBackgroundMenu"
           @toggle-browser-fullscreen="toggleBrowserFullscreen"
           @toggle-interface-fullscreen="toggleInterfaceFullscreen"
+          @toggle-pan="toggleCanvasPan"
+          @zoom-in="zoomCanvas(1.2)"
+          @zoom-out="zoomCanvas(1 / 1.2)"
+          @reset-view="resetCanvasView"
           @close-popover="closePopover"
         />
 
 
         <div class="sketch-body">
-          <div ref="stage" class="sketch-stage" :style="{ backgroundColor: canvasBackgroundColor }">
-            <canvas ref="committedCanvas" class="committed-canvas" aria-hidden="true"></canvas>
-            <canvas
-              ref="liveCanvas"
-              class="live-canvas"
-              role="application"
-              :aria-label="copy.labels.canvas"
-              tabindex="0"
-              :style="{ cursor: canvasCursor }"
-              @pointerdown="onPointerDown"
-              @pointermove="onPointerMove"
-              @pointerup="finishPointer"
-              @pointercancel="(event) => finishPointer(event, true)"
-              @pointerenter="updatePointerCursor(eventPoint($event))"
-              @pointerleave="onCanvasLeave"
-              @dblclick="onCanvasDoubleClick"
-            ></canvas>
+          <div
+            ref="stage"
+            class="sketch-stage"
+            role="application"
+            :aria-label="copy.labels.canvas"
+            tabindex="0"
+            :style="{ cursor: canvasCursor }"
+            @pointerdown="handleStagePointerDown"
+            @pointermove="handleStagePointerMove"
+            @pointerup="finishStagePointer"
+            @pointercancel="(event) => finishStagePointer(event, true)"
+            @pointerenter="updatePointerCursor(eventPoint($event))"
+            @pointerleave="onCanvasLeave"
+            @dblclick="panMode ? null : onCanvasDoubleClick($event)"
+            @wheel="handleWheel"
+          >
+            <v-stage ref="konvaStage" class="konva-stage" :config="stageConfig">
+              <v-layer ref="backgroundLayer" :config="{ listening: false }">
+                <v-rect ref="backgroundRect" :config="backgroundConfig" />
+              </v-layer>
+              <v-layer ref="contentLayer" :config="{ listening: false }">
+                <v-shape :config="{ listening: false, sceneFunc: drawContentScene }" />
+              </v-layer>
+              <v-layer ref="overlayLayer" :config="{ listening: false }">
+                <v-shape :config="{ listening: false, sceneFunc: drawOverlayScene }" />
+              </v-layer>
+            </v-stage>
 
           <span class="brush-cursor" :style="pointerCursorStyle" aria-hidden="true"></span>
 
@@ -763,6 +816,8 @@ onBeforeUnmount(() => {
   user-select: none;
 }
 
+.konva-stage,
+.konva-stage :deep(.konvajs-content),
 .sketch-stage canvas {
   position: absolute;
   inset: 0;
@@ -770,12 +825,7 @@ onBeforeUnmount(() => {
   height: 100%;
 }
 
-.committed-canvas {
-  z-index: var(--sketch-z-canvas);
-}
-
-.live-canvas {
-  z-index: calc(var(--sketch-z-canvas) + 1);
+.sketch-stage {
   outline: none;
 }
 

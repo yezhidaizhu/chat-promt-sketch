@@ -11,13 +11,6 @@ function strokePath(points) {
   return path.flat().join(" ");
 }
 
-export function prepareContext(context) {
-  const dpr = window.devicePixelRatio || 1;
-  context.setTransform(dpr, 0, 0, dpr, 0, 0);
-  context.lineCap = "round";
-  context.lineJoin = "round";
-}
-
 export function drawFreehand(context, command, pixelPoint, preview = false) {
   const input = command.points.map((point) => {
     const pixel = pixelPoint(point);

@@ -1,5 +1,5 @@
 <script setup>
-import { BrushCleaning, ChevronsDown, ChevronsUp, Eraser, Fullscreen, Maximize2, Minimize, Minimize2, MousePointer2, PaintBucket, Ratio, Redo2, Type, Undo2, X } from "@lucide/vue";
+import { BrushCleaning, ChevronsDown, ChevronsUp, Eraser, Fullscreen, Hand, Maximize2, Minimize, Minimize2, Minus, MousePointer2, PaintBucket, Plus, Ratio, Redo2, Type, Undo2, X } from "@lucide/vue";
 import { ref } from "vue";
 import ShapePicker from "./ShapePicker.vue";
 import MoveControlsIcon from "./MoveControlsIcon.vue";
@@ -25,6 +25,10 @@ defineProps({
   isInterfaceFullscreen: Boolean,
   hasContent: Boolean,
   controlsOutside: Boolean,
+  zoomPercent: { type: Number, required: true },
+  panActive: Boolean,
+  canZoomIn: Boolean,
+  canZoomOut: Boolean,
 });
 
 const emit = defineEmits([
@@ -40,6 +44,10 @@ const emit = defineEmits([
   "toggle-ratio",
   "toggle-browser-fullscreen",
   "toggle-interface-fullscreen",
+  "toggle-pan",
+  "zoom-in",
+  "zoom-out",
+  "reset-view",
   "close-popover",
 ]);
 
@@ -124,6 +132,12 @@ const toolLabels = copy.tools;
         </button>
         <div v-else class="canvas-settings-menu" role="menu" :aria-label="copy.labels.canvasSettings">
           <button class="more-toggle" type="button" :title="copy.labels.collapseSettings" :aria-label="copy.labels.collapseSettings" @click="toggleMore"><ChevronsUp :size="20" aria-hidden="true" /></button>
+          <div class="view-settings-row" role="group" :aria-label="copy.labels.viewControls">
+            <button type="button" role="menuitemcheckbox" :class="{ 'is-active': panActive }" :title="copy.labels.panCanvas" :aria-label="copy.labels.panCanvas" :aria-checked="panActive" @click="emit('toggle-pan')"><Hand :size="18" aria-hidden="true" /></button>
+            <button type="button" role="menuitem" :title="copy.labels.zoomOut" :aria-label="copy.labels.zoomOut" :disabled="!canZoomOut" @click="emit('zoom-out')"><Minus :size="18" aria-hidden="true" /></button>
+            <button class="zoom-value" type="button" role="menuitem" :title="copy.labels.resetView" :aria-label="`${copy.labels.resetView}: ${zoomPercent}%`" @click="emit('reset-view')">{{ zoomPercent }}%</button>
+            <button type="button" role="menuitem" :title="copy.labels.zoomIn" :aria-label="copy.labels.zoomIn" :disabled="!canZoomIn" @click="emit('zoom-in')"><Plus :size="18" aria-hidden="true" /></button>
+          </div>
           <button type="button" role="menuitem" :title="copy.labels.background" :aria-label="copy.labels.background" aria-haspopup="menu" @click="selectMoreAction($event, 'toggle-background')"><PaintBucket :size="18" aria-hidden="true" /></button>
           <button type="button" role="menuitem" :title="copy.labels.ratio" :aria-label="copy.labels.ratio" :disabled="isFullscreen" @click="selectMoreAction($event, 'toggle-ratio')"><Ratio :size="18" aria-hidden="true" /></button>
           <button type="button" role="menuitem" :title="controlsOutside ? copy.labels.moveControlsInside : copy.labels.moveControlsOutside" :aria-label="controlsOutside ? copy.labels.moveControlsInside : copy.labels.moveControlsOutside" :disabled="isFullscreen" @click="selectMoreAction($event, 'toggle-controls')"><MoveControlsIcon :outside="controlsOutside" /></button>
@@ -205,13 +219,13 @@ const toolLabels = copy.tools;
   top: 0;
   right: 0;
   z-index: var(--sketch-z-popover);
-  display: flex;
-  align-items: center;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 36px 36px 36px 44px 36px;
+  align-items: flex-end;
   gap: 2px;
   padding: var(--sketch-space-1);
   border: 1px solid var(--sketch-color-border);
-  border-radius: var(--sketch-radius-pill);
+  border-radius: 24px;
   background: rgba(27, 27, 27, 0.62);
   -webkit-backdrop-filter: blur(12px) saturate(120%);
   backdrop-filter: blur(12px) saturate(120%);
@@ -237,9 +251,34 @@ const toolLabels = copy.tools;
   color: var(--sketch-color-text);
 }
 
+.canvas-settings-menu button.is-active {
+  background: var(--sketch-color-control-active);
+  color: var(--sketch-color-text);
+}
+
+.view-settings-row {
+  display: grid;
+  grid-column: 2 / -1;
+  grid-template-columns: 36px 36px 44px 36px;
+  align-items: center;
+  gap: 2px;
+}
+
+.view-settings-row .zoom-value {
+  width: 44px;
+  border-radius: var(--sketch-radius-sm);
+  font: 600 12px/1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+}
+
 .canvas-settings-menu button:disabled {
   opacity: 0.3;
   cursor: default;
+}
+
+.canvas-settings-menu button:focus-visible {
+  outline: 2px solid var(--sketch-color-focus);
+  outline-offset: 2px;
 }
 
 
@@ -261,6 +300,25 @@ const toolLabels = copy.tools;
   to {
     opacity: 1;
     transform: scaleY(1);
+  }
+}
+
+@media (pointer: coarse) {
+  .canvas-settings-menu {
+    grid-template-columns: 44px 44px 44px 52px 44px;
+  }
+
+  .canvas-settings-menu button {
+    width: 44px;
+    height: 44px;
+  }
+
+  .view-settings-row {
+    grid-template-columns: 44px 44px 52px 44px;
+  }
+
+  .view-settings-row .zoom-value {
+    width: 52px;
   }
 }
 
