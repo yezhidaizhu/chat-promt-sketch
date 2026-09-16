@@ -24,7 +24,7 @@ function dispatch(event, value) {
 
 <template>
   <Teleport to="#sketch-popover-host">
-    <FloatingPopover :open="Boolean(content)" :anchor="popoverAnchor" :placement="activePopover === 'clear' ? 'top' : ['view', 'background', 'ratio'].includes(activePopover) ? 'left' : 'auto'" :variant="activePopover === 'view' ? 'pill' : 'default'" @close="closePopover">
+    <FloatingPopover :open="Boolean(content)" :anchor="popoverAnchor" :placement="activePopover === 'clear' ? 'bottom' : ['view', 'background', 'ratio'].includes(activePopover) ? 'left' : 'auto'" :variant="activePopover === 'view' ? 'pill' : 'default'" @close="closePopover">
       <component :is="content" v-bind="popoverProps" @preview="dispatch('preview', $event)" @select="dispatch('select', $event)" @confirm="dispatch('confirm', $event)" @cancel="dispatch('cancel', $event)" @toggle-pan="dispatch('togglePan')" @zoom-in="dispatch('zoomIn')" @zoom-out="dispatch('zoomOut')" @reset="dispatch('reset')" />
     </FloatingPopover>
   </Teleport>
