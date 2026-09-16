@@ -610,7 +610,7 @@ function onKeydown(event) {
   if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target.isContentEditable) {
     return;
   }
-  if (event.code === "Space" && target === stage.value) {
+  if (event.code === "Space") {
     event.preventDefault();
     setSpacePressed(true);
     pointerCursor.value.visible = false;
