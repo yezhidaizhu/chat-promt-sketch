@@ -115,12 +115,6 @@ const toolLabels = copy.tools;
       >
         <Eraser :size="20" aria-hidden="true" />
       </button>
-
-      <!--
-      <button class="tool-button" type="button" title="展开更多绘图工具" aria-label="展开更多绘图工具">
-        <ChevronRight :size="20" aria-hidden="true" />
-      </button>
-      -->
     </SketchControlPill>
 
     <div class="action-group" role="group" :aria-label="copy.labels.canvasActions">

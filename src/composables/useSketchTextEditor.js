@@ -1,4 +1,7 @@
 import { nextTick } from "vue";
+import { locale } from "../locales/index.js";
+
+const copy = locale.sketch;
 
 const padding = 6;
 const minWidth = 48;
@@ -52,9 +55,9 @@ export function useSketchTextEditor(options) {
   function commitText() {
     if (!textEditor.value) return; const editor = textEditor.value; const command = commands.value[editor.index]; const text = textValue.value.replace(/\r/g, "").trimEnd(); textEditor.value = null;
     if (!command) { selectedIndex.value = -1; render(); return; }
-    if (!text.trim()) { if (editor.isNew) { commands.value = editor.previous; selectedIndex.value = -1; render(); } else { commands.value.splice(editor.index, 1); selectedIndex.value = -1; pushHistory(editor.previous); announce("文字已删除"); } return; }
+    if (!text.trim()) { if (editor.isNew) { commands.value = editor.previous; selectedIndex.value = -1; render(); } else { commands.value.splice(editor.index, 1); selectedIndex.value = -1; pushHistory(editor.previous); announce(copy.messages.textDeleted); } return; }
     command.text = text; activeTool.value = "select"; selectedIndex.value = editor.index; selectionCursor.value = "grab";
-    if (JSON.stringify(editor.previous) !== JSON.stringify(commands.value)) { pushHistory(editor.previous); announce(editor.isNew ? "文字已添加" : "文字已更新"); } else render();
+    if (JSON.stringify(editor.previous) !== JSON.stringify(commands.value)) { pushHistory(editor.previous); announce(editor.isNew ? copy.messages.textAdded : copy.messages.textUpdated); } else render();
   }
   function cancelText() { if (!textEditor.value) return; const editor = textEditor.value; commands.value = editor.previous; textEditor.value = null; textValue.value = ""; selectedIndex.value = editor.isNew ? -1 : Math.min(editor.index, commands.value.length - 1); render(); input.value?.focus(); }
   function scaleGeometry(bounds, handleId) {

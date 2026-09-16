@@ -1,5 +1,6 @@
 <script setup>
 import { ref } from "vue";
+import { locale } from "../../locales/index.js";
 
 defineProps({
   modelValue: { type: String, required: true },
@@ -9,9 +10,10 @@ defineProps({
 const emit = defineEmits(["update:modelValue", "transform-start", "transform-move", "transform-end", "cancel", "commit"]);
 const input = ref(null);
 const handles = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
+const copy = locale.sketch;
 
 function handleLabel(handle) {
-  return ["e", "w"].includes(handle) ? "调整文字框宽度" : "缩放文字";
+  return ["e", "w"].includes(handle) ? copy.labels.textResizeWidth : copy.labels.textScale;
 }
 
 function focusAtEnd() {
@@ -30,7 +32,7 @@ defineExpose({ focus, focusAtEnd });
   <div
     class="canvas-text-editor"
     :style="style"
-    title="拖动边框移动文字"
+    :title="copy.labels.textMove"
     @pointerdown.self.prevent.stop="emit('transform-start', $event, 'move')"
     @pointermove.prevent="emit('transform-move', $event)"
     @pointerup.prevent="emit('transform-end', $event)"
@@ -41,7 +43,7 @@ defineExpose({ focus, focusAtEnd });
       :value="modelValue"
       class="canvas-text-input"
       maxlength="500"
-      aria-label="输入画布文字"
+      :aria-label="copy.labels.textInput"
       spellcheck="false"
       @input="emit('update:modelValue', $event.target.value)"
       @pointerdown.stop

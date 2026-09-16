@@ -1,4 +1,7 @@
 import { closePopover } from "./usePopover.js";
+import { locale } from "../locales/index.js";
+
+const copy = locale.sketch;
 
 export function useSketchPointer(options) {
   const {
@@ -83,16 +86,16 @@ export function useSketchPointer(options) {
       if (Math.hypot(endPoint.x - lastPoint.x, endPoint.y - lastPoint.y) > 0.0001) command.points.push(endPoint);
     }
     if (["move", "resize"].includes(gesture.type)) {
-      if (gesture.moved) { pushHistory(gesture.previous); announce(gesture.type === "resize" ? "对象大小已调整" : "对象已移动"); }
+      if (gesture.moved) { pushHistory(gesture.previous); announce(gesture.type === "resize" ? copy.messages.objectResized : copy.messages.objectMoved); }
     } else if (gesture.type === "eraser") {
-      if (applyEraser(command)) { pushHistory(gesture.previous); announce("内容已擦除"); } else render();
+      if (applyEraser(command)) { pushHistory(gesture.previous); announce(copy.messages.contentErased); } else render();
     } else {
       const start = command.type === "shape" ? pixelPoint(command.start) : null;
       const end = command.type === "shape" ? pixelPoint(command.end) : null;
       if (command.type !== "shape" || Math.hypot(end.x - start.x, end.y - start.y) > 3) {
         commands.value.push(command); pushHistory(gesture.previous);
         if (command.type === "shape") { activeTool.value = "select"; selectedIndex.value = commands.value.length - 1; selectionCursor.value = "grab"; render(); }
-        announce("内容已添加");
+        announce(copy.messages.contentAdded);
       } else render();
     }
     gesture = null;

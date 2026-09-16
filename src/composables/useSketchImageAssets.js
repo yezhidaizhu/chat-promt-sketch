@@ -29,6 +29,24 @@ export function useSketchImageAssets() {
     return asset;
   }
 
+  async function addImageUrl(source) {
+    let url;
+    try {
+      url = new URL(source, window.location.href);
+    } catch {
+      throw new Error("unsupported");
+    }
+    if (!["http:", "https:", "data:", "blob:"].includes(url.protocol)) throw new Error("unsupported");
+    try {
+      const response = await fetch(url.href, { mode: "cors" });
+      if (!response.ok) throw new Error();
+      return await addImageFile(await response.blob());
+    } catch (error) {
+      if (["unsupported", "too-large", "decode-failed"].includes(error.message)) throw error;
+      throw new Error("url-unavailable");
+    }
+  }
+
   function getImage(id) {
     return assets.get(id)?.image || null;
   }
@@ -38,5 +56,5 @@ export function useSketchImageAssets() {
     assets.clear();
   });
 
-  return { addImageFile, getImage };
+  return { addImageFile, addImageUrl, getImage };
 }

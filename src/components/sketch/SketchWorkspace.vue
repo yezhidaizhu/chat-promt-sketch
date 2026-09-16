@@ -15,6 +15,7 @@ import { useSketchTextEditor } from "../../composables/useSketchTextEditor.js";
 import { useSketchKonvaCanvas } from "../../composables/useSketchKonvaCanvas.js";
 import { useSketchImageAssets } from "../../composables/useSketchImageAssets.js";
 import { closePopover, openPopover } from "../../composables/usePopover.js";
+import { dismissToast, showToast } from "../../composables/useToast.js";
 import { isSelectionFrameHit as hitSelectionFrame, resizeCursor as getResizeCursor } from "../../utils/hitTest.js";
 import { drawFreehand, drawShape } from "../../utils/sketchDrawing.js";
 import { createSketchCamera } from "../../utils/sketchCamera.js";
@@ -51,7 +52,7 @@ const browserFullscreen = ref(Boolean(document.fullscreenElement));
 const isFullscreen = computed(() => interfaceFullscreen.value || browserFullscreen.value);
 const effectiveControlsOutside = computed(() => controlsOutside.value && !isFullscreen.value);
 const canvasBackgroundColor = computed(() => backgroundPreviewColor.value || backgroundColor.value);
-const { addImageFile, getImage } = useSketchImageAssets();
+const { addImageFile, addImageUrl, getImage } = useSketchImageAssets();
 
 let textTransform = null;
 let resizeObserver;
@@ -188,6 +189,7 @@ const { undoStack, redoStack, canUndo, canRedo, clone, pushHistory, undo, redo }
   },
   () => render(),
   () => ({ backgroundColor: backgroundColor.value }),
+  { undo: copy.messages.undone, redo: copy.messages.redone },
 );
 let controls;
 const displaySize = (command) => command.worldSize ? camera.value.toScreenDistance(command.size) : command.size;
@@ -241,7 +243,7 @@ async function changeCanvasRatio(ratio) {
   await nextTick();
   await waitForCanvasTransition();
   resizeCanvases();
-  announce(fillWindow ? "画布已铺满窗口" : `画布比例 ${ratio}`);
+  announce(fillWindow ? copy.messages.canvasFilled : copy.messages.canvasRatio(ratio));
 }
 
 async function toggleBrowserFullscreen() {
@@ -250,7 +252,7 @@ async function toggleBrowserFullscreen() {
     if (document.fullscreenElement) await document.exitFullscreen();
     else await document.documentElement.requestFullscreen();
   } catch {
-    announce("当前环境不支持浏览器全屏");
+    announce(copy.messages.fullscreenUnsupported);
   }
 }
 
@@ -525,18 +527,18 @@ function cancelWindowPointer(event) {
 
 function zoomCanvas(factor) {
   if (!zoomBy(factor)) return;
-  announce(`画布缩放 ${zoomPercent.value}%`);
+  announce(copy.messages.canvasZoom(zoomPercent.value));
 }
 
 function resetCanvasView() {
   if (!resetView()) return;
-  announce("画布视图已重置");
+  announce(copy.messages.canvasViewReset);
 }
 
 function toggleCanvasPan() {
   setPanMode();
   pointerCursor.value.visible = false;
-  announce(panMode.value ? "画布平移已开启" : "画布平移已关闭");
+  announce(panMode.value ? copy.messages.panEnabled : copy.messages.panDisabled);
 }
 
 function moveSelectedObject(targetIndex, message) {
@@ -578,19 +580,19 @@ function openObjectContextMenu(event) {
 }
 
 function sendSelectedToBack() {
-  moveSelectedObject(0, "对象已置于底层");
+  moveSelectedObject(0, copy.messages.sentToBack);
 }
 
 function moveSelectedBackward() {
-  moveSelectedObject(selectedIndex.value - 1, "对象已下移一层");
+  moveSelectedObject(selectedIndex.value - 1, copy.messages.movedBackward);
 }
 
 function moveSelectedForward() {
-  moveSelectedObject(selectedIndex.value + 1, "对象已上移一层");
+  moveSelectedObject(selectedIndex.value + 1, copy.messages.movedForward);
 }
 
 function bringSelectedToFront() {
-  moveSelectedObject(commands.value.length - 1, "对象已置于顶层");
+  moveSelectedObject(commands.value.length - 1, copy.messages.broughtToFront);
 }
 
 function selectTool(tool) {
@@ -614,12 +616,13 @@ async function addImage(event) {
   await insertImage(file);
 }
 
-async function insertImage(file, dropPoint = null) {
+async function insertImage(source, dropPoint = null) {
   if (imageLoading.value) return;
+  dismissToast();
   imageLoading.value = true;
-  announce("图片加载中");
+  announce(copy.messages.imageLoading);
   try {
-    const asset = await addImageFile(file);
+    const asset = typeof source === "string" ? await addImageUrl(source) : await addImageFile(source);
     const maxWidth = stageSize.value.width * 0.6;
     const maxHeight = stageSize.value.height * 0.6;
     const scale = Math.min(1, maxWidth / asset.width, maxHeight / asset.height);
@@ -645,27 +648,29 @@ async function insertImage(file, dropPoint = null) {
     selectionCursor.value = "grab";
     pushHistory(previous);
     stage.value?.focus();
-    announce("图片已添加");
+    announce(copy.messages.imageAdded);
   } catch (error) {
-    announce(error.message === "too-large" ? "图片不能超过 25 MB" : error.message === "unsupported" ? "请选择图片文件" : "图片加载失败");
+    const message = error.message === "too-large" ? copy.messages.imageTooLarge : error.message === "url-unavailable" ? copy.messages.imageUrlUnavailable : error.message === "unsupported" ? copy.messages.imageUnsupported : copy.messages.imageLoadFailed;
+    showToast(message, { type: "error" });
   } finally {
     imageLoading.value = false;
   }
 }
 
-function isFileDrag(event) {
-  return Array.from(event.dataTransfer?.types || []).includes("Files");
+function isImageDrag(event) {
+  const types = Array.from(event.dataTransfer?.types || [], (type) => type.toLowerCase());
+  return types.some((type) => ["files", "text/html", "text/uri-list", "text/plain", "downloadurl"].includes(type));
 }
 
 function handleImageDragEnter(event) {
-  if (!isFileDrag(event)) return;
+  if (!isImageDrag(event)) return;
   event.preventDefault();
   imageDragDepth += 1;
   imageDragActive.value = true;
 }
 
 function handleImageDragOver(event) {
-  if (!isFileDrag(event)) return;
+  if (!isImageDrag(event)) return;
   event.preventDefault();
   event.dataTransfer.dropEffect = "copy";
 }
@@ -683,9 +688,18 @@ async function handleImageDrop(event) {
   imageDragActive.value = false;
   const files = Array.from(event.dataTransfer?.files || []);
   const file = files.find((item) => item.type.startsWith("image/")) || files[0];
-  if (!file) return;
+  let source = file;
+  if (!source) {
+    const html = event.dataTransfer?.getData("text/html") || "";
+    const imageSource = html ? new DOMParser().parseFromString(html, "text/html").querySelector("img")?.getAttribute("src") : "";
+    const uri = (event.dataTransfer?.getData("text/uri-list") || "").split(/\r?\n/).find((line) => line && !line.startsWith("#"));
+    const downloadUrl = (event.dataTransfer?.getData("DownloadURL") || "").match(/^[^:]+:[^:]*:(.+)$/)?.[1];
+    const plainText = (event.dataTransfer?.getData("text/plain") || "").trim();
+    source = imageSource || uri || downloadUrl || plainText || "";
+  }
+  if (!source) return;
   closePopover();
-  await insertImage(file, eventPoint(event));
+  await insertImage(source, eventPoint(event));
 }
 
 function confirmClearCanvas() {
@@ -698,12 +712,12 @@ function confirmClearCanvas() {
   closePopover();
   pushHistory(previous);
   resetView();
-  announce("画布已清空");
+  announce(copy.messages.canvasCleared);
 }
 
 async function copyCanvas() {
   if (!hasContent.value || !navigator.clipboard || typeof ClipboardItem === "undefined") {
-    announce("当前环境不支持复制 PNG");
+    announce(copy.messages.copyUnsupported);
     return;
   }
   const output = createOutputCanvas();
@@ -715,10 +729,10 @@ async function copyCanvas() {
       copySucceeded.value = true;
       clearTimeout(copyFeedbackTimer);
       copyFeedbackTimer = setTimeout(() => { copySucceeded.value = false; }, 1600);
-      announce("PNG 图片已复制");
+      announce(copy.messages.imageCopied);
     } catch {
       copySucceeded.value = false;
-      announce("复制 PNG 失败");
+      announce(copy.messages.copyFailed);
     }
   }, "image/png");
 }
@@ -765,7 +779,7 @@ function setBackgroundColor(color) {
   backgroundPreviewColor.value = null;
   pushHistory(previous, previousContext);
   render();
-  announce("画布背景色已更新");
+  announce(copy.messages.backgroundUpdated);
 }
 
 function downloadCanvas() {
@@ -777,7 +791,7 @@ function downloadCanvas() {
   link.href = output.toDataURL("image/png");
   link.click();
   emit("download", link.download);
-  announce("图片已下载");
+  announce(copy.messages.imageDownloaded);
 }
 
 function closeDialog() {
@@ -813,7 +827,7 @@ function onKeydown(event) {
   }
   if (event.key === "Escape" && panMode.value) {
     setPanMode(false);
-    announce("画布平移已关闭");
+    announce(copy.messages.panDisabled);
     return;
   }
   if (event.key === "Escape" && selectedIndex.value >= 0) {
@@ -848,7 +862,7 @@ function onKeydown(event) {
     selectedIndex.value = -1;
     closeObjectContextMenu();
     pushHistory(previous);
-    announce("对象已删除");
+    announce(copy.messages.objectDeleted);
   }
 }
 
@@ -869,7 +883,7 @@ watch(
   },
 );
 
-watch(strokeSize, (size) => announce(`画笔粗细 ${size} 像素`));
+watch(strokeSize, (size) => announce(copy.messages.brushSize(size)));
 watch(activePopover, (active, previous) => {
   if (previous === "background" && active !== "background" && backgroundPreviewColor.value) {
     backgroundPreviewColor.value = null;

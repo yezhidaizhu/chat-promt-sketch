@@ -3,19 +3,23 @@ import { ref } from "vue";
 import { Pencil } from "@lucide/vue";
 import SketchDialog from "./components/SketchDialog.vue";
 import SketchPopoverRoot from "./components/SketchPopoverRoot.vue";
+import ToastRoot from "./components/ToastRoot.vue";
+import { locale } from "./locales/index.js";
 
 const isSketchOpen = ref(false);
+const copy = locale.sketch;
 </script>
 
 <template>
   <main class="demo-page">
     <button class="open-button" type="button" @click="isSketchOpen = true">
       <Pencil :size="19" aria-hidden="true" />
-      打开画板
+      {{ copy.labels.openSketch }}
     </button>
 
     <SketchDialog v-model="isSketchOpen" />
     <SketchPopoverRoot />
+    <ToastRoot />
   </main>
 </template>
 

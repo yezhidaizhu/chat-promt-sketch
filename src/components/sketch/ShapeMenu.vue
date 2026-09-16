@@ -1,14 +1,16 @@
 <script setup>
 import { ArrowUpRight, Circle, Diamond, Heart, Minus, Square, Star, Triangle } from "@lucide/vue";
+import { locale } from "../../locales/index.js";
 
 defineProps({ activeShape: { type: String, default: "rectangle" } });
 const emit = defineEmits(["select"]);
+const copy = locale.sketch;
 const shapes = [
-  { id: "line", label: "直线", icon: Minus }, { id: "arrow", label: "箭头", icon: ArrowUpRight },
-  { id: "rectangle", label: "矩形", icon: Square }, { id: "ellipse", label: "椭圆", icon: Circle },
-  { id: "triangle", label: "三角形", icon: Triangle }, { id: "diamond", label: "菱形", icon: Diamond },
-  { id: "star", label: "星形", icon: Star }, { id: "heart", label: "心形", icon: Heart },
-];
+  { id: "line", icon: Minus }, { id: "arrow", icon: ArrowUpRight },
+  { id: "rectangle", icon: Square }, { id: "ellipse", icon: Circle },
+  { id: "triangle", icon: Triangle }, { id: "diamond", icon: Diamond },
+  { id: "star", icon: Star }, { id: "heart", icon: Heart },
+].map((shape) => ({ ...shape, label: copy.shapes[shape.id] }));
 </script>
 
 <template>

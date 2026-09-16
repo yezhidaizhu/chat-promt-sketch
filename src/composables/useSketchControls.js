@@ -1,4 +1,7 @@
 import { closePopover, openPopover } from "./usePopover.js";
+import { locale } from "../locales/index.js";
+
+const copy = locale.sketch;
 
 export function useSketchControls({ state, clone, pushHistory, render, resizeCanvases, announce, commitText, onRatioChange, getCurrentRatio = () => state.canvasRatio.value, getViewScale = () => 1 }) {
   const { activeTool, activeShape, strokeColor, strokeSize, selectedCommand, selectedIndex, activePopover, controlsOutside, canvasRatio } = state;
@@ -10,7 +13,7 @@ export function useSketchControls({ state, clone, pushHistory, render, resizeCan
     state.selectionCursor.value = "default";
     closePopover();
     render();
-    announce(`${{ select: "选择并移动", pen: "画笔", text: "文字", eraser: "橡皮擦" }[tool] || "形状"}已选择`);
+    announce(copy.messages.toolSelected(copy.tools[tool] || copy.labels.shape));
   }
 
   function toggleShapeMenu(anchor) {
@@ -38,14 +41,14 @@ export function useSketchControls({ state, clone, pushHistory, render, resizeCan
     canvasRatio.value = ratio;
     closePopover();
     resizeCanvases();
-    announce(`画布比例 ${ratio}`);
+    announce(copy.messages.canvasRatio(ratio));
   }
 
   function selectShape(shape) {
     activeShape.value = shape.id;
     activeTool.value = "shape";
     closePopover();
-    announce(`${shape.label}已选择`);
+    announce(copy.messages.shapeSelected(shape.label));
   }
 
   function selectCommand(index) {
@@ -65,7 +68,7 @@ export function useSketchControls({ state, clone, pushHistory, render, resizeCan
     const previous = clone();
     command.size = commandSize;
     pushHistory(previous);
-    announce(`对象粗细 ${size} 像素`);
+    announce(copy.messages.objectSize(size));
   }
 
   function setStrokeColor(color) {
@@ -76,7 +79,7 @@ export function useSketchControls({ state, clone, pushHistory, render, resizeCan
     const previous = clone();
     command.color = color;
     pushHistory(previous);
-    announce("对象颜色已更新");
+    announce(copy.messages.objectColorUpdated);
   }
 
   return { selectTool, toggleShapeMenu, toggleControlsOutside, toggleRatioMenu, selectCanvasRatio, selectShape, selectCommand, setStrokeSize, setStrokeColor };

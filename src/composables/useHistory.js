@@ -1,6 +1,6 @@
 import { computed, ref } from "vue";
 
-export function useHistory(getCommands, onRestore, onCommit = () => {}, getContext = () => null) {
+export function useHistory(getCommands, onRestore, onCommit = () => {}, getContext = () => null, messages) {
   const undoStack = ref([]);
   const redoStack = ref([]);
   const clone = (value = getCommands()) => JSON.parse(JSON.stringify(value));
@@ -18,14 +18,14 @@ export function useHistory(getCommands, onRestore, onCommit = () => {}, getConte
     if (!canUndo.value) return false;
     redoStack.value.push(snapshot());
     const previous = undoStack.value.pop();
-    onRestore(previous.commands, "已撤销", previous.context);
+    onRestore(previous.commands, messages.undo, previous.context);
     return true;
   }
   function redo() {
     if (!canRedo.value) return false;
     undoStack.value.push(snapshot());
     const next = redoStack.value.pop();
-    onRestore(next.commands, "已重做", next.context);
+    onRestore(next.commands, messages.redo, next.context);
     return true;
   }
   return { undoStack, redoStack, canUndo, canRedo, clone, pushHistory, undo, redo };

@@ -88,7 +88,7 @@ function onKeydown(event) {
       :aria-valuemin="min"
       :aria-valuemax="max"
       :aria-valuenow="modelValue"
-      :aria-valuetext="`${modelValue} 像素`"
+      :aria-valuetext="copy.messages.pixels(modelValue)"
       @pointerdown.prevent="startDrag"
       @pointermove.prevent="moveDrag"
       @pointerup.prevent="finishDrag"
