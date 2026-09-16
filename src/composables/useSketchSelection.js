@@ -6,6 +6,11 @@ export function useSketchSelection({ commands, selectedIndex, pixelPoint, textLa
       const point = pixelPoint(command); const layout = textLayout(command);
       return { x: point.x, y: point.y, width: layout.width, height: layout.height };
     }
+    if (command.type === "image") {
+      const start = pixelPoint(command);
+      const end = pixelPoint({ x: command.x + command.width, y: command.y + command.height });
+      return { x: Math.min(start.x, end.x), y: Math.min(start.y, end.y), width: Math.abs(end.x - start.x), height: Math.abs(end.y - start.y) };
+    }
     const points = (command.type === "shape" ? [command.start, command.end] : command.points).map(pixelPoint);
     const xs = points.map((point) => point.x); const ys = points.map((point) => point.y); const padding = Math.max(displaySize(command) / 2 + 1, 8);
     return { x: Math.min(...xs) - padding, y: Math.min(...ys) - padding, width: Math.max(...xs) - Math.min(...xs) + padding * 2, height: Math.max(...ys) - Math.min(...ys) + padding * 2 };
@@ -30,7 +35,7 @@ export function useSketchSelection({ commands, selectedIndex, pixelPoint, textLa
   }
 
   function selectionHandles(command) {
-    if (!command || !["shape", "text", "pen"].includes(command.type)) return [];
+    if (!command || !["shape", "text", "pen", "image"].includes(command.type)) return [];
     if (command.type === "shape" && ["line", "arrow"].includes(command.shape)) return [{ id: "start", ...pixelPoint(command.start) }, { id: "end", ...pixelPoint(command.end) }];
     const bounds = selectionBounds(command);
     return [["nw", bounds.x, bounds.y], ["n", bounds.x + bounds.width / 2, bounds.y], ["ne", bounds.x + bounds.width, bounds.y], ["e", bounds.x + bounds.width, bounds.y + bounds.height / 2], ["se", bounds.x + bounds.width, bounds.y + bounds.height], ["s", bounds.x + bounds.width / 2, bounds.y + bounds.height], ["sw", bounds.x, bounds.y + bounds.height], ["w", bounds.x, bounds.y + bounds.height / 2]].map(([id, x, y]) => ({ id, x, y }));
@@ -50,7 +55,7 @@ export function useSketchSelection({ commands, selectedIndex, pixelPoint, textLa
   function findCommand(point) {
     for (let index = commands.value.length - 1; index >= 0; index -= 1) {
       const command = commands.value[index];
-      const displayCommand = command.worldSize ? { ...command, size: displaySize(command) } : command;
+      const displayCommand = command.worldSize && command.size != null ? { ...command, size: displaySize(command) } : command;
       if (command.type !== "eraser" && isCommandHit(displayCommand, point, pixelPoint, commandBounds)) return index;
     }
     return -1;

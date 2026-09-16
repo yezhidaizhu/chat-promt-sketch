@@ -12,6 +12,7 @@ import { useSketchPointer } from "../../composables/useSketchPointer.js";
 import { useSketchSelection } from "../../composables/useSketchSelection.js";
 import { useSketchTextEditor } from "../../composables/useSketchTextEditor.js";
 import { useSketchKonvaCanvas } from "../../composables/useSketchKonvaCanvas.js";
+import { useSketchImageAssets } from "../../composables/useSketchImageAssets.js";
 import { closePopover, openPopover } from "../../composables/usePopover.js";
 import { isSelectionFrameHit as hitSelectionFrame, resizeCursor as getResizeCursor } from "../../utils/hitTest.js";
 import { drawFreehand, drawShape } from "../../utils/sketchDrawing.js";
@@ -29,6 +30,8 @@ const emit = defineEmits(["update:modelValue", "download"]);
 
 const dialog = ref(null);
 const textInput = ref(null);
+const imageInput = ref(null);
+const imageLoading = ref(false);
 const {
   activeTool, activeShape, strokeColor, strokeSize, backgroundColor, commands, selectedIndex,
   activePopover, controlsOutside, canvasRatio, textEditor,
@@ -45,6 +48,7 @@ const browserFullscreen = ref(Boolean(document.fullscreenElement));
 const isFullscreen = computed(() => interfaceFullscreen.value || browserFullscreen.value);
 const effectiveControlsOutside = computed(() => controlsOutside.value && !isFullscreen.value);
 const canvasBackgroundColor = computed(() => backgroundPreviewColor.value || backgroundColor.value);
+const { addImageFile, getImage } = useSketchImageAssets();
 
 let textTransform = null;
 let resizeObserver;
@@ -280,6 +284,14 @@ function migrateLegacyCommands() {
 }
 
 function drawCommand(context, command, preview = false) {
+  if (command.type === "image") {
+    const image = getImage(command.assetId);
+    if (!image) return;
+    const start = pixelPoint(command);
+    const end = pixelPoint({ x: command.x + command.width, y: command.y + command.height });
+    context.drawImage(image, start.x, start.y, end.x - start.x, end.y - start.y);
+    return;
+  }
   const drawable = command.worldSize ? { ...command, size: camera.value.toScreenDistance(command.size) } : command;
   if (["pen", "eraser"].includes(drawable.type)) {
     drawFreehand(context, drawable, pixelPoint, preview);
@@ -309,7 +321,7 @@ function updateViewport() {
 }
 
 function translateCommand(command, dx, dy) {
-  if (command.type === "text") {
+  if (["text", "image"].includes(command.type)) {
     command.x += dx;
     command.y += dy;
   } else if (command.type === "shape") {
@@ -348,6 +360,21 @@ function resizeCommand(command, point, gestureState) {
 
   if (command.type === "text") {
     resizeTextCommand(command, point, gestureState);
+    return;
+  }
+
+  if (command.type === "image") {
+    const target = resizeBounds(gestureState.originalSelectionBounds, handle.id, point);
+    const left = Math.min(target.x, target.x + target.width);
+    const right = Math.max(target.x, target.x + target.width);
+    const top = Math.min(target.y, target.y + target.height);
+    const bottom = Math.max(target.y, target.y + target.height);
+    const start = normalizePoint({ x: left, y: top });
+    const end = normalizePoint({ x: right, y: bottom });
+    command.x = start.x;
+    command.y = start.y;
+    command.width = end.x - start.x;
+    command.height = end.y - start.y;
     return;
   }
 
@@ -439,6 +466,50 @@ function toggleShapeMenu(anchor) {
   openShapeMenu(anchor);
 }
 
+function openImagePicker() {
+  imageInput.value?.click();
+}
+
+async function addImage(event) {
+  const file = event.target.files?.[0];
+  event.target.value = "";
+  if (!file) return;
+  imageLoading.value = true;
+  announce("图片加载中");
+  try {
+    const asset = await addImageFile(file);
+    const maxWidth = stageSize.value.width * 0.6;
+    const maxHeight = stageSize.value.height * 0.6;
+    const scale = Math.min(1, maxWidth / asset.width, maxHeight / asset.height);
+    const width = Math.max(1, asset.width * scale);
+    const height = Math.max(1, asset.height * scale);
+    const x = (stageSize.value.width - width) / 2;
+    const y = (stageSize.value.height - height) / 2;
+    const start = normalizePoint({ x, y });
+    const end = normalizePoint({ x: x + width, y: y + height });
+    const previous = clone();
+    commands.value.push({
+      type: "image",
+      assetId: asset.id,
+      x: start.x,
+      y: start.y,
+      width: end.x - start.x,
+      height: end.y - start.y,
+      worldSize: true,
+    });
+    setPanMode(false);
+    activeTool.value = "select";
+    selectedIndex.value = commands.value.length - 1;
+    selectionCursor.value = "grab";
+    pushHistory(previous);
+    announce("图片已添加");
+  } catch (error) {
+    announce(error.message === "too-large" ? "图片不能超过 25 MB" : error.message === "unsupported" ? "请选择图片文件" : "图片加载失败");
+  } finally {
+    imageLoading.value = false;
+  }
+}
+
 function confirmClearCanvas() {
   if (!hasContent.value) return;
   const previous = clone();
@@ -482,6 +553,24 @@ function requestClearCanvas(anchor) {
 function toggleBackgroundMenu(anchor) {
   if (activePopover.value === "background") closePopover();
   else openPopover("background", anchor, { preview: previewBackgroundColor, select: setBackgroundColor }, { get current() { return backgroundColor.value; } });
+}
+
+function toggleViewMenu(anchor) {
+  if (activePopover.value === "view") {
+    closePopover();
+    return;
+  }
+  openPopover("view", anchor, {
+    togglePan: toggleCanvasPan,
+    zoomIn: () => zoomCanvas(1.2),
+    zoomOut: () => zoomCanvas(1 / 1.2),
+    reset: resetCanvasView,
+  }, {
+    get zoomPercent() { return zoomPercent.value; },
+    get panActive() { return panMode.value; },
+    get canZoomIn() { return zoom.value < maxZoom; },
+    get canZoomOut() { return zoom.value > minZoom; },
+  });
 }
 
 function previewBackgroundColor(color) {
@@ -655,9 +744,8 @@ onBeforeUnmount(() => {
           :has-content="hasContent"
           :controls-outside="effectiveControlsOutside"
           :zoom-percent="zoomPercent"
-          :pan-active="panMode"
-          :can-zoom-in="zoom < maxZoom"
-          :can-zoom-out="zoom > minZoom"
+          :active-popover="activePopover"
+          :image-loading="imageLoading"
           @close="closeDialog"
           @select-tool="selectTool"
           @toggle-shapes="toggleShapeMenu"
@@ -670,12 +758,12 @@ onBeforeUnmount(() => {
           @toggle-background="toggleBackgroundMenu"
           @toggle-browser-fullscreen="toggleBrowserFullscreen"
           @toggle-interface-fullscreen="toggleInterfaceFullscreen"
-          @toggle-pan="toggleCanvasPan"
-          @zoom-in="zoomCanvas(1.2)"
-          @zoom-out="zoomCanvas(1 / 1.2)"
-          @reset-view="resetCanvasView"
+          @toggle-view="toggleViewMenu"
+          @add-image="openImagePicker"
           @close-popover="closePopover"
         />
+
+        <input ref="imageInput" hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" @change="addImage" />
 
 
         <div class="sketch-body">

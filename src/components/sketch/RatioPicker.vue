@@ -1,5 +1,6 @@
 <script setup>
 import { Ratio } from "@lucide/vue";
+import PopoverTrigger from "../PopoverTrigger.vue";
 import { locale } from "../../locales/index.js";
 
 const copy = locale.sketch;
@@ -18,18 +19,15 @@ const emit = defineEmits(["toggle"]);
 
 <template>
   <div class="ratio-picker">
-    <button
+    <PopoverTrigger
       class="tool-button"
       :class="{ 'is-active': active }"
-      type="button"
-      :title="copy.labels.ratio"
-      :aria-label="copy.labels.ratio"
-      aria-haspopup="menu"
-      :aria-expanded="open"
-      @click="emit('toggle', $event.currentTarget)"
+      :label="copy.labels.ratio"
+      :open="open"
+      @toggle="emit('toggle', $event)"
     >
       <Ratio :size="20" aria-hidden="true" />
-    </button>
+    </PopoverTrigger>
   </div>
 </template>
 

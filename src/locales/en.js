@@ -14,6 +14,7 @@ export default {
     zoomOut: "Zoom out",
     resetView: "Reset canvas view",
     zoomIn: "Zoom in",
+    addImage: "Add image",
     shape: "Shapes",
     backgroundMenu: "Choose canvas background",
     customBackground: "Custom background color",

@@ -1,5 +1,6 @@
 <script setup>
 import { Shapes } from "@lucide/vue";
+import PopoverTrigger from "../PopoverTrigger.vue";
 import { locale } from "../../locales/index.js";
 
 const copy = locale.sketch;
@@ -18,18 +19,15 @@ const emit = defineEmits(["toggle"]);
 
 <template>
   <div class="shape-picker">
-    <button
+    <PopoverTrigger
       class="tool-button"
       :class="{ 'is-active': active }"
-      type="button"
-      :title="copy.labels.shape"
-      :aria-label="copy.labels.shape"
-      aria-haspopup="menu"
-      :aria-expanded="open"
-      @click="emit('toggle', $event.currentTarget)"
+      :label="copy.labels.shape"
+      :open="open"
+      @toggle="emit('toggle', $event)"
     >
       <Shapes :size="20" aria-hidden="true" />
-    </button>
+    </PopoverTrigger>
   </div>
 </template>
 
