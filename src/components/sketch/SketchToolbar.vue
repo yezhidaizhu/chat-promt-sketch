@@ -1,5 +1,5 @@
 <script setup>
-import { BrushCleaning, ChevronsDown, ChevronsUp, Eraser, Fullscreen, ImagePlus, LoaderCircle, Maximize2, Minimize, Minimize2, MousePointer2, PaintBucket, Ratio, Redo2, Type, Undo2, X } from "@lucide/vue";
+import { BrushCleaning, ChevronsDown, ChevronsUp, Eraser, Fullscreen, ImagePlus, LoaderCircle, Minimize, MousePointer2, PaintBucket, Ratio, Redo2, Type, Undo2, X } from "@lucide/vue";
 import { ref } from "vue";
 import PopoverTrigger from "../PopoverTrigger.vue";
 import ShapePicker from "./ShapePicker.vue";
@@ -23,7 +23,6 @@ defineProps({
   canRedo: Boolean,
   isFullscreen: Boolean,
   isBrowserFullscreen: Boolean,
-  isInterfaceFullscreen: Boolean,
   hasContent: Boolean,
   controlsOutside: Boolean,
   zoomPercent: { type: Number, required: true },
@@ -43,7 +42,6 @@ const emit = defineEmits([
   "toggle-background",
   "toggle-ratio",
   "toggle-browser-fullscreen",
-  "toggle-interface-fullscreen",
   "toggle-view",
   "add-image",
   "close-popover",
@@ -143,10 +141,9 @@ const toolLabels = copy.tools;
           <button class="more-toggle" type="button" :title="copy.labels.collapseSettings" :aria-label="copy.labels.collapseSettings" @click="toggleMore"><ChevronsUp :size="20" aria-hidden="true" /></button>
           <PopoverTrigger class="zoom-summary" :class="{ 'is-active': activePopover === 'view' }" role="menuitem" :title="copy.labels.viewControls" :label="`${copy.labels.viewControls}: ${zoomPercent}%`" :open="activePopover === 'view'" @toggle="selectMoreAction($event, 'toggle-view')">{{ zoomPercent }}%</PopoverTrigger>
           <PopoverTrigger role="menuitem" :label="copy.labels.background" :open="activePopover === 'background'" @toggle="selectMoreAction($event, 'toggle-background')"><PaintBucket :size="18" aria-hidden="true" /></PopoverTrigger>
-          <PopoverTrigger role="menuitem" :label="copy.labels.ratio" :open="activePopover === 'ratio'" :disabled="isFullscreen" @toggle="selectMoreAction($event, 'toggle-ratio')"><Ratio :size="18" aria-hidden="true" /></PopoverTrigger>
+          <PopoverTrigger role="menuitem" :label="copy.labels.ratio" :open="activePopover === 'ratio'" @toggle="selectMoreAction($event, 'toggle-ratio')"><Ratio :size="18" aria-hidden="true" /></PopoverTrigger>
           <button type="button" role="menuitem" :title="controlsOutside ? copy.labels.moveControlsInside : copy.labels.moveControlsOutside" :aria-label="controlsOutside ? copy.labels.moveControlsInside : copy.labels.moveControlsOutside" :disabled="isFullscreen" @click="selectMoreAction($event, 'toggle-controls')"><MoveControlsIcon :outside="controlsOutside" /></button>
           <button type="button" role="menuitem" :title="isBrowserFullscreen ? copy.labels.exitBrowserFullscreen : copy.labels.browserFullscreen" :aria-label="isBrowserFullscreen ? copy.labels.exitBrowserFullscreen : copy.labels.browserFullscreen" @click="emit('toggle-browser-fullscreen')"><Minimize v-if="isBrowserFullscreen" :size="18" aria-hidden="true" /><Fullscreen v-else :size="18" aria-hidden="true" /></button>
-          <button type="button" role="menuitem" :title="isInterfaceFullscreen ? copy.labels.exitInterfaceFullscreen : copy.labels.interfaceFullscreen" :aria-label="isInterfaceFullscreen ? copy.labels.exitInterfaceFullscreen : copy.labels.interfaceFullscreen" @click="emit('toggle-interface-fullscreen')"><Minimize2 v-if="isInterfaceFullscreen" :size="18" aria-hidden="true" /><Maximize2 v-else :size="18" aria-hidden="true" /></button>
         </div>
       </div>
     </div>

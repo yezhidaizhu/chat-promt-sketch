@@ -38,8 +38,7 @@ export default {
     moveControlsInside: "Move controls inside canvas",
     browserFullscreen: "Browser fullscreen",
     exitBrowserFullscreen: "Exit browser fullscreen",
-    interfaceFullscreen: "Interface fullscreen",
-    exitInterfaceFullscreen: "Exit interface fullscreen",
+    fillWindow: "Fill window",
     brushControls: "Brush settings",
     brushSize: "Brush size",
   },
@@ -49,6 +48,6 @@ export default {
     teal: "Teal", cyan: "Cyan", blue: "Blue", indigo: "Indigo", purple: "Purple", pink: "Pink",
     dark: "Dark", warmGray: "Warm gray", lightBlue: "Light blue", lightPink: "Light pink",
   },
-  ratios: { "1:1": "Square", "4:3": "Standard landscape", "16:9": "Widescreen landscape", "3:4": "Standard portrait", "9:16": "Widescreen portrait", "3:2": "Photo landscape" },
+  ratios: { "1:1": "Square", "4:3": "Standard landscape", "16:9": "Widescreen landscape", "3:4": "Standard portrait", "9:16": "Widescreen portrait" },
   },
 };

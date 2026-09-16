@@ -12,6 +12,6 @@ export const sketchConfig = {
   ],
   ratios: [
     { id: "1:1", width: 1, height: 1 }, { id: "4:3", width: 4, height: 3 }, { id: "16:9", width: 16, height: 9 },
-    { id: "3:4", width: 3, height: 4 }, { id: "9:16", width: 9, height: 16 }, { id: "3:2", width: 3, height: 2 },
+    { id: "3:4", width: 3, height: 4 }, { id: "9:16", width: 9, height: 16 },
   ],
 };

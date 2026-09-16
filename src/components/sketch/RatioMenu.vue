@@ -1,4 +1,5 @@
 <script setup>
+import { Maximize2 } from "@lucide/vue";
 import { sketchConfig } from "../../config/sketch.js";
 import { locale } from "../../locales/index.js";
 
@@ -22,6 +23,10 @@ function previewStyle(item) {
       <span class="ratio-preview" :style="previewStyle(item)" aria-hidden="true"></span>
       <span class="ratio-label">{{ item.id }}</span>
     </button>
+    <button class="ratio-option ratio-option-fill" :class="{ 'is-active': current === 'fill' }" type="button" role="menuitemradio" :aria-label="copy.labels.fillWindow" :aria-checked="current === 'fill'" @click="emit('select', 'fill')">
+      <span class="ratio-preview ratio-preview-fill" aria-hidden="true"><Maximize2 :size="15" /></span>
+      <span class="ratio-label">Fill</span>
+    </button>
   </div>
 </template>
 
@@ -31,5 +36,6 @@ function previewStyle(item) {
 .ratio-option:hover, .ratio-option.is-active { background: var(--sketch-color-control-hover); color: var(--sketch-color-text); }
 .ratio-option:focus-visible { outline: 2px solid var(--sketch-color-focus); outline-offset: 2px; }
 .ratio-preview { display: block; flex: 0 0 auto; border: 1.5px solid currentColor; border-radius: 2px; }
+.ratio-preview-fill { display: grid; width: 28px; height: 25px; place-items: center; border-style: dashed; }
 .ratio-label { font-size: 11px; font-weight: 650; line-height: 1; }
 </style>

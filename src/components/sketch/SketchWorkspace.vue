@@ -186,7 +186,7 @@ const { undoStack, redoStack, canUndo, canRedo, clone, pushHistory, undo, redo }
 let controls;
 const displaySize = (command) => command.worldSize ? camera.value.toScreenDistance(command.size) : command.size;
 const { textLayout, textEditorBounds, startText, beginTextEdit, commitText, cancelText, resizeTextCommand, startTextTransform, moveTextTransform, finishTextTransform } = useSketchTextEditor({ commands, selectedIndex, activeTool, strokeColor, selectionCursor, textEditor, textValue, clone, pushHistory, announce, render, selectCommand: (...args) => controls.selectCommand(...args), normalizePoint, pixelPoint, eventPoint, getStageSize: () => stageSize.value, getContext: () => measurementContext, input: textInput, getCamera: () => camera.value, displaySize });
-controls = useSketchControls({ state: { activeTool, activeShape, strokeColor, strokeSize, commands, selectedIndex, activePopover, controlsOutside, canvasRatio, textEditor, selectionCursor, selectedCommand }, clone, pushHistory, render, resizeCanvases, announce, commitText, onRatioChange: changeCanvasRatio, getViewScale: () => camera.value.scale });
+controls = useSketchControls({ state: { activeTool, activeShape, strokeColor, strokeSize, commands, selectedIndex, activePopover, controlsOutside, canvasRatio, textEditor, selectionCursor, selectedCommand }, clone, pushHistory, render, resizeCanvases, announce, commitText, onRatioChange: changeCanvasRatio, getCurrentRatio: () => interfaceFullscreen.value ? "fill" : canvasRatio.value, getViewScale: () => camera.value.scale });
 const { selectTool: selectDrawingTool, toggleShapeMenu: openShapeMenu, toggleControlsOutside, toggleRatioMenu, selectShape, selectCommand, setStrokeSize, setStrokeColor } = controls;
 selectionApi = useSketchSelection({ commands, selectedIndex, pixelPoint, textLayout, displaySize });
 const { commandBounds, geometryBounds, selectionBounds, findResizeHandle, resizeBounds, findCommand } = selectionApi;
@@ -210,22 +210,21 @@ function waitForCanvasTransition() {
 }
 
 async function changeCanvasRatio(ratio) {
-  if (ratio === canvasRatio.value) return;
-  canvasRatio.value = ratio;
-  if (!commands.value.length) drawingRatio.value = ratioValue.value;
+  const fillWindow = ratio === "fill";
+  if (fillWindow === interfaceFullscreen.value && (fillWindow || ratio === canvasRatio.value)) {
+    closePopover();
+    return;
+  }
+  interfaceFullscreen.value = fillWindow;
+  if (!fillWindow) {
+    canvasRatio.value = ratio;
+    if (!commands.value.length) drawingRatio.value = ratioValue.value;
+  }
   closePopover();
   await nextTick();
   await waitForCanvasTransition();
   resizeCanvases();
-  announce(`画布比例 ${ratio}`);
-}
-
-async function toggleInterfaceFullscreen() {
-  interfaceFullscreen.value = !interfaceFullscreen.value;
-  closePopover();
-  await nextTick();
-  await waitForCanvasTransition();
-  resizeCanvases();
+  announce(fillWindow ? "画布已铺满窗口" : `画布比例 ${ratio}`);
 }
 
 async function toggleBrowserFullscreen() {
@@ -740,7 +739,6 @@ onBeforeUnmount(() => {
           :can-redo="canRedo"
           :is-fullscreen="isFullscreen"
           :is-browser-fullscreen="browserFullscreen"
-          :is-interface-fullscreen="interfaceFullscreen"
           :has-content="hasContent"
           :controls-outside="effectiveControlsOutside"
           :zoom-percent="zoomPercent"
@@ -757,7 +755,6 @@ onBeforeUnmount(() => {
           @toggle-ratio="toggleRatioMenu"
           @toggle-background="toggleBackgroundMenu"
           @toggle-browser-fullscreen="toggleBrowserFullscreen"
-          @toggle-interface-fullscreen="toggleInterfaceFullscreen"
           @toggle-view="toggleViewMenu"
           @add-image="openImagePicker"
           @close-popover="closePopover"
