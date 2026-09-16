@@ -32,6 +32,7 @@ const dialog = ref(null);
 const textInput = ref(null);
 const imageInput = ref(null);
 const imageLoading = ref(false);
+const imageDragActive = ref(false);
 const {
   activeTool, activeShape, strokeColor, strokeSize, backgroundColor, commands, selectedIndex,
   activePopover, controlsOutside, canvasRatio, textEditor,
@@ -54,6 +55,7 @@ let textTransform = null;
 let resizeObserver;
 let copyFeedbackTimer;
 let browserFullscreenTransition;
+let imageDragDepth = 0;
 
 const textEditorPadding = 6;
 const textEditorMinWidth = 48;
@@ -473,6 +475,11 @@ async function addImage(event) {
   const file = event.target.files?.[0];
   event.target.value = "";
   if (!file) return;
+  await insertImage(file);
+}
+
+async function insertImage(file, dropPoint = null) {
+  if (imageLoading.value) return;
   imageLoading.value = true;
   announce("图片加载中");
   try {
@@ -482,8 +489,8 @@ async function addImage(event) {
     const scale = Math.min(1, maxWidth / asset.width, maxHeight / asset.height);
     const width = Math.max(1, asset.width * scale);
     const height = Math.max(1, asset.height * scale);
-    const x = (stageSize.value.width - width) / 2;
-    const y = (stageSize.value.height - height) / 2;
+    const x = dropPoint ? Math.min(stageSize.value.width - width, Math.max(0, dropPoint.x - width / 2)) : (stageSize.value.width - width) / 2;
+    const y = dropPoint ? Math.min(stageSize.value.height - height, Math.max(0, dropPoint.y - height / 2)) : (stageSize.value.height - height) / 2;
     const start = normalizePoint({ x, y });
     const end = normalizePoint({ x: x + width, y: y + height });
     const previous = clone();
@@ -501,12 +508,48 @@ async function addImage(event) {
     selectedIndex.value = commands.value.length - 1;
     selectionCursor.value = "grab";
     pushHistory(previous);
+    stage.value?.focus();
     announce("图片已添加");
   } catch (error) {
     announce(error.message === "too-large" ? "图片不能超过 25 MB" : error.message === "unsupported" ? "请选择图片文件" : "图片加载失败");
   } finally {
     imageLoading.value = false;
   }
+}
+
+function isFileDrag(event) {
+  return Array.from(event.dataTransfer?.types || []).includes("Files");
+}
+
+function handleImageDragEnter(event) {
+  if (!isFileDrag(event)) return;
+  event.preventDefault();
+  imageDragDepth += 1;
+  imageDragActive.value = true;
+}
+
+function handleImageDragOver(event) {
+  if (!isFileDrag(event)) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "copy";
+}
+
+function handleImageDragLeave(event) {
+  if (!imageDragActive.value) return;
+  event.preventDefault();
+  imageDragDepth = Math.max(0, imageDragDepth - 1);
+  if (!imageDragDepth) imageDragActive.value = false;
+}
+
+async function handleImageDrop(event) {
+  event.preventDefault();
+  imageDragDepth = 0;
+  imageDragActive.value = false;
+  const files = Array.from(event.dataTransfer?.files || []);
+  const file = files.find((item) => item.type.startsWith("image/")) || files[0];
+  if (!file) return;
+  closePopover();
+  await insertImage(file, eventPoint(event));
 }
 
 function confirmClearCanvas() {
@@ -770,7 +813,12 @@ onBeforeUnmount(() => {
             role="application"
             :aria-label="copy.labels.canvas"
             tabindex="0"
+            :class="{ 'is-image-drag-active': imageDragActive }"
             :style="{ cursor: canvasCursor }"
+            @dragenter="handleImageDragEnter"
+            @dragover="handleImageDragOver"
+            @dragleave="handleImageDragLeave"
+            @drop="handleImageDrop"
             @pointerdown="handleStagePointerDown"
             @pointermove="handleStagePointerMove"
             @pointerup="finishStagePointer"
@@ -912,6 +960,22 @@ onBeforeUnmount(() => {
 
 .sketch-stage {
   outline: none;
+}
+
+.sketch-stage::after {
+  position: absolute;
+  z-index: var(--sketch-z-controls);
+  inset: 10px;
+  border: 2px dashed transparent;
+  border-radius: calc(var(--sketch-radius-md) - 8px);
+  content: "";
+  pointer-events: none;
+  transition: border-color var(--sketch-transition-fast), background-color var(--sketch-transition-fast);
+}
+
+.sketch-stage.is-image-drag-active::after {
+  border-color: var(--sketch-color-selection);
+  background: rgba(109, 216, 183, 0.06);
 }
 
 .brush-cursor {
