@@ -32,9 +32,9 @@ onBeforeUnmount(() => cancelAnimationFrame(frame));
 
 <template>
   <div class="background-color-menu" :aria-label="copy.labels.backgroundMenu">
-    <button v-for="color in colors" :key="color.value" class="background-color-option" :class="{ 'is-active': current === color.value }" type="button" role="menuitemradio" :aria-label="`${color.name} background`" :aria-checked="current === color.value" :style="{ backgroundColor: color.value }" @click="emit('select', color.value)"></button>
+    <button v-for="color in colors" :key="color.value" class="background-color-option" :class="{ 'is-active': current === color.value, 'is-transparent': color.value === 'transparent' }" type="button" role="menuitemradio" :title="`${color.name} background`" :aria-label="`${color.name} background`" :aria-checked="current === color.value" :style="color.value === 'transparent' ? null : { backgroundColor: color.value }" @click="emit('select', color.value)"></button>
     <label class="background-color-option is-custom" :title="copy.labels.customBackground" :aria-label="copy.labels.customBackground">
-      <input type="color" :value="current" @input="queuePreview" @change="selectCustomColor" />
+      <input type="color" :value="current === 'transparent' ? '#171717' : current" @input="queuePreview" @change="selectCustomColor" />
     </label>
   </div>
 </template>
@@ -45,6 +45,7 @@ onBeforeUnmount(() => cancelAnimationFrame(frame));
 .background-color-option:hover { scale: 1.05; }
 .background-color-option.is-active { box-shadow: 0 0 0 2px var(--sketch-color-surface-raised), 0 0 0 4px var(--sketch-color-focus); }
 .background-color-option:focus-visible { outline: 2px solid var(--sketch-color-focus); outline-offset: 3px; }
+.background-color-option.is-transparent { background-color: #151515; background-image: linear-gradient(45deg, #555555 25%, transparent 25%), linear-gradient(-45deg, #555555 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #555555 75%), linear-gradient(-45deg, transparent 75%, #555555 75%); background-position: 0 0, 0 6px, 6px -6px, -6px 0; background-size: 12px 12px; }
 .background-color-option.is-custom { overflow: hidden; border: 0; background: conic-gradient(#ef4444, #f59e0b, #22c55e, #06b6d4, #3b82f6, #a855f7, #ef4444); }
 .background-color-option input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 </style>

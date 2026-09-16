@@ -7,8 +7,8 @@ export const sketchConfig = {
     { id: "blue", value: "#2563eb" }, { id: "indigo", value: "#4f46e5" }, { id: "purple", value: "#9333ea" }, { id: "pink", value: "#db2777" },
   ],
   backgroundColors: [
-    { id: "dark", value: "#171717" }, { id: "white", value: "#ffffff" }, { id: "warmGray", value: "#ede9e1" },
-    { id: "lightBlue", value: "#e8f0f7" }, { id: "lightPink", value: "#f6e9ed" },
+    { id: "dark", value: "#171717" }, { id: "white", value: "#ffffff" },
+    { id: "lightGray", value: "#f3f4f6" }, { id: "transparent", value: "transparent" },
   ],
   ratios: [
     { id: "1:1", width: 1, height: 1 }, { id: "4:3", width: 4, height: 3 }, { id: "16:9", width: 16, height: 9 },

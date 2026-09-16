@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount } from "vue";
 import { sketchConfig } from "../../config/sketch.js";
 import { locale } from "../../locales/index.js";
+import { scrollWheelHorizontally } from "../../utils/scroll.js";
 
 const copy = locale.sketch;
 
@@ -44,7 +45,7 @@ const isCustom = computed(() => !colors.some((color) => color.value === props.mo
 
 <template>
   <div class="color-controls" :class="{ 'is-outside': outside }">
-    <fieldset class="color-palette" :aria-label="copy.labels.palette">
+    <fieldset class="color-palette" :aria-label="copy.labels.palette" @wheel="scrollWheelHorizontally">
       <legend class="sr-only">{{ copy.labels.palette }}</legend>
       <label
         class="color-button custom-color"
@@ -122,7 +123,7 @@ const isCustom = computed(() => !colors.some((color) => color.value === props.mo
 }
 
 .color-button.is-selected {
-  box-shadow: 0 0 0 2px var(--sketch-color-surface), 0 0 0 4px #2c67c5;
+  box-shadow: 0 0 0 2px var(--sketch-color-surface), 0 0 0 4px var(--sketch-color-focus);
 }
 
 .custom-color {
@@ -155,7 +156,7 @@ const isCustom = computed(() => !colors.some((color) => color.value === props.mo
 
 .custom-color:has(input:focus-visible),
 .color-button:focus-visible {
-  outline: 2px solid #2c67c5;
+  outline: 2px solid var(--sketch-color-focus);
   outline-offset: 3px;
 }
 
@@ -180,7 +181,7 @@ const isCustom = computed(() => !colors.some((color) => color.value === props.mo
 
 @media (max-width: 720px) {
   .color-controls.is-outside {
-    right: 0;
+    right: calc(var(--sketch-control-size) + var(--sketch-space-1) * 2 + 42px);
     left: 136px;
   }
 

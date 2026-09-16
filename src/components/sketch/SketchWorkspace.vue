@@ -961,7 +961,7 @@ onBeforeUnmount(() => {
             role="application"
             :aria-label="copy.labels.canvas"
             tabindex="0"
-            :class="{ 'is-image-drag-active': imageDragActive }"
+            :class="{ 'is-image-drag-active': imageDragActive, 'is-transparent-background': canvasBackgroundColor === 'transparent' }"
             :style="{ cursor: canvasCursor }"
             @dragenter="handleImageDragEnter"
             @dragover="handleImageDragOver"
@@ -1122,6 +1122,13 @@ onBeforeUnmount(() => {
 
 .sketch-stage {
   outline: none;
+}
+
+.sketch-stage.is-transparent-background {
+  background-color: #181818;
+  background-image: linear-gradient(45deg, #282828 25%, transparent 25%), linear-gradient(-45deg, #282828 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #282828 75%), linear-gradient(-45deg, transparent 75%, #282828 75%);
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+  background-size: 20px 20px;
 }
 
 .sketch-stage::after {

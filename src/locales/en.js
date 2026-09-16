@@ -51,7 +51,7 @@ export default {
   colors: {
     white: "White", gray: "Gray", brown: "Brown", red: "Red", orange: "Orange", yellow: "Yellow", green: "Green",
     teal: "Teal", cyan: "Cyan", blue: "Blue", indigo: "Indigo", purple: "Purple", pink: "Pink",
-    dark: "Dark", warmGray: "Warm gray", lightBlue: "Light blue", lightPink: "Light pink",
+    transparent: "Transparent", dark: "Dark", lightGray: "Light gray",
   },
   ratios: { "1:1": "Square", "4:3": "Standard landscape", "16:9": "Widescreen landscape", "3:4": "Standard portrait", "9:16": "Widescreen portrait" },
   },
