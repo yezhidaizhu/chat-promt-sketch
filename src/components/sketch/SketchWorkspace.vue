@@ -415,7 +415,7 @@ function applyEraser(command) {
   return applied;
 }
 
-function resizeCommand(command, point, gestureState) {
+function resizeCommand(command, point, gestureState, preserveAspect = false) {
   const handle = gestureState.handle;
   const normalized = normalizePoint(point);
 
@@ -427,7 +427,7 @@ function resizeCommand(command, point, gestureState) {
 
   if (command.type === "shape") {
     const padding = displaySize(command) / 2 + 1;
-    const targetSelection = resizeBounds(gestureState.originalSelectionBounds, handle.id, point);
+    const targetSelection = resizeBounds(gestureState.originalSelectionBounds, handle.id, point, preserveAspect);
     const left = Math.min(targetSelection.x, targetSelection.x + targetSelection.width) + padding;
     const right = Math.max(targetSelection.x, targetSelection.x + targetSelection.width) - padding;
     const top = Math.min(targetSelection.y, targetSelection.y + targetSelection.height) + padding;
@@ -445,7 +445,7 @@ function resizeCommand(command, point, gestureState) {
   }
 
   if (command.type === "image") {
-    const target = resizeBounds(gestureState.originalSelectionBounds, handle.id, point);
+    const target = resizeBounds(gestureState.originalSelectionBounds, handle.id, point, preserveAspect);
     const left = Math.min(target.x, target.x + target.width);
     const right = Math.max(target.x, target.x + target.width);
     const top = Math.min(target.y, target.y + target.height);
@@ -463,7 +463,7 @@ function resizeCommand(command, point, gestureState) {
   if (command.type === "pen") {
     const originalBounds = gestureState.originalBounds;
     const padding = displaySize(command) / 2 + 1;
-    const targetSelection = resizeBounds(gestureState.originalSelectionBounds, handle.id, point);
+    const targetSelection = resizeBounds(gestureState.originalSelectionBounds, handle.id, point, preserveAspect);
     const targetGeometry = {
       x: targetSelection.x + padding,
       y: targetSelection.y + padding,

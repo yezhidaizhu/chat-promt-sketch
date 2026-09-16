@@ -46,8 +46,34 @@ export function useSketchSelection({ commands, selectedIndex, pixelPoint, textLa
     return selectionHandles(command).find((handle) => Math.hypot(point.x - handle.x, point.y - handle.y) <= hitRadius) || null;
   }
 
-  function resizeBounds(bounds, handleId, point) {
+  function resizeBounds(bounds, handleId, point, preserveAspect = false) {
     let left = bounds.x; let right = bounds.x + bounds.width; let top = bounds.y; let bottom = bounds.y + bounds.height;
+    if (preserveAspect && bounds.width && bounds.height) {
+      const aspect = bounds.width / bounds.height;
+      const centerX = bounds.x + bounds.width / 2;
+      const centerY = bounds.y + bounds.height / 2;
+      if (handleId.length === 2) {
+        const anchorX = handleId.includes("w") ? right : left;
+        const anchorY = handleId.includes("n") ? bottom : top;
+        let dx = point.x - anchorX;
+        let dy = point.y - anchorY;
+        const signX = Math.sign(dx) || (handleId.includes("w") ? -1 : 1);
+        const signY = Math.sign(dy) || (handleId.includes("n") ? -1 : 1);
+        if (Math.abs(dx) / bounds.width >= Math.abs(dy) / bounds.height) dy = signY * Math.abs(dx) / aspect;
+        else dx = signX * Math.abs(dy) * aspect;
+        point = { x: anchorX + dx, y: anchorY + dy };
+      } else if (["e", "w"].includes(handleId)) {
+        const anchorX = handleId === "w" ? right : left;
+        const height = Math.abs(point.x - anchorX) / aspect;
+        top = centerY - height / 2;
+        bottom = centerY + height / 2;
+      } else if (["n", "s"].includes(handleId)) {
+        const anchorY = handleId === "n" ? bottom : top;
+        const width = Math.abs(point.y - anchorY) * aspect;
+        left = centerX - width / 2;
+        right = centerX + width / 2;
+      }
+    }
     if (handleId.includes("w")) left = point.x; if (handleId.includes("e")) right = point.x; if (handleId.includes("n")) top = point.y; if (handleId.includes("s")) bottom = point.y;
     return { x: left, y: top, width: right - left, height: bottom - top };
   }

@@ -66,7 +66,7 @@ export function useSketchPointer(options) {
       translateCommand(commands.value[selectedIndex.value], normalized.x - gesture.last.x, normalized.y - gesture.last.y);
       gesture.last = normalized; gesture.moved = true; selectionCursor.value = "grabbing"; render(); return;
     }
-    if (gesture.type === "resize") { resizeCommand(commands.value[selectedIndex.value], point, gesture); gesture.moved = true; render(); return; }
+    if (gesture.type === "resize") { resizeCommand(commands.value[selectedIndex.value], point, gesture, event.shiftKey); gesture.moved = true; render(); return; }
     if (gesture.type === "shape") gesture.command.end = normalizePoint(point);
     else (event.getCoalescedEvents?.() || [event]).forEach((pointerEvent) => gesture.command.points.push(normalizePoint(eventPoint(pointerEvent))));
     if (gesture.type === "eraser") renderEraserPreview(gesture.command); else renderLive(gesture.command);
