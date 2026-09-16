@@ -1,6 +1,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import ColorPalette from "./ColorPalette.vue";
+import ObjectContextMenu from "./ObjectContextMenu.vue";
 import OutputActions from "./OutputActions.vue";
 import SketchToolbar from "./SketchToolbar.vue";
 import StrokeSizeControl from "./StrokeSizeControl.vue";
@@ -33,6 +34,7 @@ const textInput = ref(null);
 const imageInput = ref(null);
 const imageLoading = ref(false);
 const imageDragActive = ref(false);
+const objectContextMenu = ref(null);
 const {
   activeTool, activeShape, strokeColor, strokeSize, backgroundColor, commands, selectedIndex,
   activePopover, controlsOutside, canvasRatio, textEditor,
@@ -56,6 +58,7 @@ let resizeObserver;
 let copyFeedbackTimer;
 let browserFullscreenTransition;
 let imageDragDepth = 0;
+let commandId = 0;
 
 const textEditorPadding = 6;
 const textEditorMinWidth = 48;
@@ -175,6 +178,7 @@ const textEditorStyle = computed(() => {
 const { undoStack, redoStack, canUndo, canRedo, clone, pushHistory, undo, redo } = useHistory(
   () => commands.value,
   (restored, message, context) => {
+    closeObjectContextMenu();
     commands.value = restored;
     if (context?.backgroundColor) backgroundColor.value = context.backgroundColor;
     selectedIndex.value = -1;
@@ -187,11 +191,22 @@ const { undoStack, redoStack, canUndo, canRedo, clone, pushHistory, undo, redo }
 );
 let controls;
 const displaySize = (command) => command.worldSize ? camera.value.toScreenDistance(command.size) : command.size;
-const { textLayout, textEditorBounds, startText, beginTextEdit, commitText, cancelText, resizeTextCommand, startTextTransform, moveTextTransform, finishTextTransform } = useSketchTextEditor({ commands, selectedIndex, activeTool, strokeColor, selectionCursor, textEditor, textValue, clone, pushHistory, announce, render, selectCommand: (...args) => controls.selectCommand(...args), normalizePoint, pixelPoint, eventPoint, getStageSize: () => stageSize.value, getContext: () => measurementContext, input: textInput, getCamera: () => camera.value, displaySize });
+const { textLayout, textEditorBounds, startText, beginTextEdit, commitText, cancelText, resizeTextCommand, startTextTransform, moveTextTransform, finishTextTransform } = useSketchTextEditor({ commands, selectedIndex, activeTool, strokeColor, selectionCursor, textEditor, textValue, clone, pushHistory, announce, render, selectCommand: (...args) => controls.selectCommand(...args), normalizePoint, pixelPoint, eventPoint, getStageSize: () => stageSize.value, getContext: () => measurementContext, input: textInput, getCamera: () => camera.value, displaySize, transformMasks: transformCommandMasks });
 controls = useSketchControls({ state: { activeTool, activeShape, strokeColor, strokeSize, commands, selectedIndex, activePopover, controlsOutside, canvasRatio, textEditor, selectionCursor, selectedCommand }, clone, pushHistory, render, resizeCanvases, announce, commitText, onRatioChange: changeCanvasRatio, getCurrentRatio: () => interfaceFullscreen.value ? "fill" : canvasRatio.value, getViewScale: () => camera.value.scale });
 const { selectTool: selectDrawingTool, toggleShapeMenu: openShapeMenu, toggleControlsOutside, toggleRatioMenu, selectShape, selectCommand, setStrokeSize, setStrokeColor } = controls;
 selectionApi = useSketchSelection({ commands, selectedIndex, pixelPoint, textLayout, displaySize });
 const { commandBounds, geometryBounds, selectionBounds, findResizeHandle, resizeBounds, findCommand } = selectionApi;
+const canMoveBackward = computed(() => selectedIndex.value > 0);
+const canMoveForward = computed(() => selectedIndex.value >= 0 && selectedIndex.value < commands.value.length - 1);
+const objectContextMenuStyle = computed(() => {
+  if (!objectContextMenu.value) return {};
+  const width = 168;
+  const height = 146;
+  const gap = 8;
+  const left = Math.min(stageSize.value.width - width - gap, Math.max(gap, objectContextMenu.value.x));
+  const top = Math.min(stageSize.value.height - height - gap, Math.max(gap, objectContextMenu.value.y));
+  return { left: `${left}px`, top: `${top}px` };
+});
 
 function waitForCanvasTransition() {
   return new Promise((resolve) => {
@@ -263,25 +278,49 @@ function pixelPoint(point) {
   return camera.value.toScreen(point);
 }
 
+function createCommandId() {
+  return crypto.randomUUID?.() || `sketch-object-${Date.now()}-${commandId += 1}`;
+}
+
+function migrateCommandGeometry(command, activeCamera) {
+  if (command.worldSize) return;
+  const toWorld = (point) => activeCamera.toWorld({ x: point.x * stageSize.value.width, y: point.y * stageSize.value.height, pressure: point.pressure });
+  if (["text", "image"].includes(command.type)) {
+    const point = toWorld(command);
+    command.x = point.x;
+    command.y = point.y;
+    command.width = activeCamera.toWorldXDistance((command.width || 0) * stageSize.value.width);
+    if (command.type === "image") command.height = activeCamera.toWorldDistance((command.height || 0) * stageSize.value.height);
+  } else if (command.type === "shape") {
+    command.start = toWorld(command.start);
+    command.end = toWorld(command.end);
+  } else {
+    command.points = command.points.map(toWorld);
+  }
+  if (command.size != null) command.size = activeCamera.toWorldDistance(command.size);
+  command.worldSize = true;
+}
+
 function migrateLegacyCommands() {
   const activeCamera = camera.value;
+  const selected = commands.value[selectedIndex.value];
+  const objects = [];
+  let hasLegacyErasers = false;
   commands.value.forEach((command) => {
-    if (command.worldSize) return;
-    const toWorld = (point) => activeCamera.toWorld({ x: point.x * stageSize.value.width, y: point.y * stageSize.value.height, pressure: point.pressure });
-    if (command.type === "text") {
-      const point = toWorld(command);
-      command.x = point.x;
-      command.y = point.y;
-      command.width = activeCamera.toWorldXDistance((command.width || 0) * stageSize.value.width);
-    } else if (command.type === "shape") {
-      command.start = toWorld(command.start);
-      command.end = toWorld(command.end);
-    } else {
-      command.points = command.points.map(toWorld);
+    migrateCommandGeometry(command, activeCamera);
+    if (command.type === "eraser") {
+      objects.forEach((object) => object.masks.push(JSON.parse(JSON.stringify(command))));
+      hasLegacyErasers = true;
+      return;
     }
-    command.size = activeCamera.toWorldDistance(command.size);
-    command.worldSize = true;
+    command.id ||= createCommandId();
+    command.masks ||= [];
+    command.masks.forEach((mask) => migrateCommandGeometry(mask, activeCamera));
+    objects.push(command);
   });
+  if (!hasLegacyErasers) return;
+  commands.value = objects;
+  selectedIndex.value = selected ? objects.indexOf(selected) : -1;
 }
 
 function drawCommand(context, command, preview = false) {
@@ -336,6 +375,44 @@ function translateCommand(command, dx, dy) {
       point.y += dy;
     });
   }
+  command.masks?.forEach((mask) => mask.points.forEach((point) => {
+    point.x += dx;
+    point.y += dy;
+  }));
+}
+
+function transformCommandMasks(command, originalCommand, originalBounds, nextBounds = selectionBounds(command)) {
+  if (!originalCommand.masks?.length || !originalBounds.width || !originalBounds.height) return;
+  const scaleX = nextBounds.width / originalBounds.width;
+  const scaleY = nextBounds.height / originalBounds.height;
+  const sizeScale = (Math.abs(scaleX) + Math.abs(scaleY)) / 2;
+  command.masks = originalCommand.masks.map((mask) => ({
+    ...mask,
+    size: mask.size * sizeScale,
+    points: mask.points.map((point) => {
+      const pixel = pixelPoint(point);
+      return normalizePoint({
+        x: nextBounds.x + (pixel.x - originalBounds.x) * scaleX,
+        y: nextBounds.y + (pixel.y - originalBounds.y) * scaleY,
+        pressure: point.pressure,
+      });
+    }),
+  }));
+}
+
+function applyEraser(command) {
+  if (!command?.points.length || !commands.value.length) return false;
+  const eraserBounds = commandBounds(command);
+  let applied = false;
+  commands.value.forEach((object) => {
+    const bounds = selectionBounds(object);
+    const intersects = eraserBounds.x <= bounds.x + bounds.width && eraserBounds.x + eraserBounds.width >= bounds.x && eraserBounds.y <= bounds.y + bounds.height && eraserBounds.y + eraserBounds.height >= bounds.y;
+    if (!intersects) return;
+    object.masks ||= [];
+    object.masks.push(clone(command));
+    applied = true;
+  });
+  return applied;
 }
 
 function resizeCommand(command, point, gestureState) {
@@ -344,6 +421,7 @@ function resizeCommand(command, point, gestureState) {
 
   if (command.type === "shape" && ["line", "arrow"].includes(command.shape)) {
     command[handle.id] = normalized;
+    transformCommandMasks(command, gestureState.originalCommand, gestureState.originalSelectionBounds);
     return;
   }
 
@@ -356,11 +434,13 @@ function resizeCommand(command, point, gestureState) {
     const bottom = Math.max(targetSelection.y, targetSelection.y + targetSelection.height) - padding;
     command.start = normalizePoint({ x: left, y: top });
     command.end = normalizePoint({ x: right, y: bottom });
+    transformCommandMasks(command, gestureState.originalCommand, gestureState.originalSelectionBounds);
     return;
   }
 
   if (command.type === "text") {
     resizeTextCommand(command, point, gestureState);
+    transformCommandMasks(command, gestureState.originalCommand, gestureState.originalSelectionBounds);
     return;
   }
 
@@ -376,6 +456,7 @@ function resizeCommand(command, point, gestureState) {
     command.y = start.y;
     command.width = end.x - start.x;
     command.height = end.y - start.y;
+    transformCommandMasks(command, gestureState.originalCommand, gestureState.originalSelectionBounds);
     return;
   }
 
@@ -400,6 +481,7 @@ function resizeCommand(command, point, gestureState) {
         pressure: originalPoint.pressure,
       });
     });
+    transformCommandMasks(command, gestureState.originalCommand, gestureState.originalSelectionBounds);
   }
 }
 
@@ -415,7 +497,7 @@ const { onPointerDown, onCanvasDoubleClick, onPointerMove, finishPointer, onCanv
   activeTool, activeShape, strokeColor, strokeSize, activePopover, commands, selectedIndex, selectedCommand, selectionCursor,
   pointerCursor, clone, pushHistory, announce, selectCommand, findResizeHandle, findCommand, selectionBounds, geometryBounds,
   resizeCommand, translateCommand, normalizePoint, pixelPoint, eventPoint, render, renderLive, renderEraserPreview, startText,
-  beginTextEdit, updatePointerCursor, isPointInCanvas, getResizeCursor, hitSelectionFrame, getViewScale: () => camera.value.scale,
+  beginTextEdit, updatePointerCursor, isPointInCanvas, getResizeCursor, hitSelectionFrame, getViewScale: () => camera.value.scale, applyEraser,
 });
 
 function handleStagePointerDown(event) {
@@ -455,6 +537,60 @@ function toggleCanvasPan() {
   setPanMode();
   pointerCursor.value.visible = false;
   announce(panMode.value ? "画布平移已开启" : "画布平移已关闭");
+}
+
+function moveSelectedObject(targetIndex, message) {
+  const from = selectedIndex.value;
+  if (from < 0) return;
+  const boundedTarget = Math.min(commands.value.length - 1, Math.max(0, targetIndex));
+  if (from === boundedTarget) return;
+  const previous = clone();
+  const [command] = commands.value.splice(from, 1);
+  commands.value.splice(boundedTarget, 0, command);
+  selectedIndex.value = boundedTarget;
+  closeObjectContextMenu();
+  pushHistory(previous);
+  announce(message);
+}
+
+function closeObjectContextMenu() {
+  objectContextMenu.value = null;
+}
+
+function openObjectContextMenu(event) {
+  const target = event.target;
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target.isContentEditable) return;
+  event.preventDefault();
+  const point = eventPoint(event);
+  const index = findCommand(point);
+  if (index < 0) {
+    closeObjectContextMenu();
+    return;
+  }
+  if (textEditor.value) commitText();
+  closePopover();
+  setPanMode(false);
+  activeTool.value = "select";
+  selectedIndex.value = index;
+  selectionCursor.value = "grab";
+  objectContextMenu.value = { x: point.x, y: point.y };
+  render();
+}
+
+function sendSelectedToBack() {
+  moveSelectedObject(0, "对象已置于底层");
+}
+
+function moveSelectedBackward() {
+  moveSelectedObject(selectedIndex.value - 1, "对象已下移一层");
+}
+
+function moveSelectedForward() {
+  moveSelectedObject(selectedIndex.value + 1, "对象已上移一层");
+}
+
+function bringSelectedToFront() {
+  moveSelectedObject(commands.value.length - 1, "对象已置于顶层");
 }
 
 function selectTool(tool) {
@@ -645,6 +781,7 @@ function downloadCanvas() {
 }
 
 function closeDialog() {
+  closeObjectContextMenu();
   emit("update:modelValue", false);
 }
 
@@ -660,9 +797,19 @@ function onKeydown(event) {
     return;
   }
   const modifier = event.metaKey || event.ctrlKey;
+  if (modifier && selectedIndex.value >= 0 && ["BracketLeft", "BracketRight"].includes(event.code)) {
+    event.preventDefault();
+    if (event.code === "BracketLeft") event.shiftKey ? sendSelectedToBack() : moveSelectedBackward();
+    else event.shiftKey ? bringSelectedToFront() : moveSelectedForward();
+    return;
+  }
   if (modifier && event.key.toLowerCase() === "z") {
     event.preventDefault();
     event.shiftKey ? redo() : undo();
+  }
+  if (event.key === "Escape" && objectContextMenu.value) {
+    closeObjectContextMenu();
+    return;
   }
   if (event.key === "Escape" && panMode.value) {
     setPanMode(false);
@@ -699,6 +846,7 @@ function onKeydown(event) {
     const previous = clone();
     commands.value.splice(selectedIndex.value, 1);
     selectedIndex.value = -1;
+    closeObjectContextMenu();
     pushHistory(previous);
     announce("对象已删除");
   }
@@ -769,7 +917,7 @@ onBeforeUnmount(() => {
   <Teleport to="body">
     <div v-show="modelValue" class="sketch-modal" :class="{ 'is-interface-fullscreen': interfaceFullscreen }">
       <div class="sketch-backdrop"></div>
-      <div ref="dialog" class="sketch-dialog" :style="dialogStyle" role="dialog" aria-modal="true" aria-labelledby="sketch-dialog-title" tabindex="-1" @keydown="onKeydown" @keyup="onKeyup">
+      <div ref="dialog" class="sketch-dialog" :style="dialogStyle" role="dialog" aria-modal="true" aria-labelledby="sketch-dialog-title" tabindex="-1" @pointerdown="closeObjectContextMenu" @keydown="onKeydown" @keyup="onKeyup">
       <section class="sketch-editor" :class="{ 'is-controls-outside': effectiveControlsOutside }">
           <h2 id="sketch-dialog-title" class="sr-only">{{ copy.labels.dialog }}</h2>
         <div id="sketch-popover-host"></div>
@@ -825,6 +973,7 @@ onBeforeUnmount(() => {
             @pointercancel="(event) => finishStagePointer(event, true)"
             @pointerenter="updatePointerCursor(eventPoint($event))"
             @pointerleave="onCanvasLeave"
+            @contextmenu="openObjectContextMenu"
             @dblclick="panMode ? null : onCanvasDoubleClick($event)"
             @wheel="handleWheel"
           >
@@ -839,6 +988,19 @@ onBeforeUnmount(() => {
                 <v-shape :config="{ listening: false, sceneFunc: drawOverlayScene }" />
               </v-layer>
             </v-stage>
+
+          <ObjectContextMenu
+            v-if="objectContextMenu"
+            :style="objectContextMenuStyle"
+            :can-move-backward="canMoveBackward"
+            :can-move-forward="canMoveForward"
+            @pointerdown.stop
+            @wheel.stop
+            @send-to-back="sendSelectedToBack"
+            @move-backward="moveSelectedBackward"
+            @move-forward="moveSelectedForward"
+            @bring-to-front="bringSelectedToFront"
+          />
 
           <span class="brush-cursor" :style="pointerCursorStyle" aria-hidden="true"></span>
 

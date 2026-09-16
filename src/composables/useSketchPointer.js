@@ -5,7 +5,7 @@ export function useSketchPointer(options) {
     activeTool, activeShape, strokeColor, strokeSize, activePopover, commands, selectedIndex, selectedCommand, selectionCursor,
     clone, pushHistory, announce, selectCommand, findResizeHandle, findCommand, selectionBounds, geometryBounds, resizeCommand,
     translateCommand, normalizePoint, pixelPoint, eventPoint, render, renderLive, renderEraserPreview, startText, beginTextEdit,
-    updatePointerCursor, isPointInCanvas, getResizeCursor, hitSelectionFrame, getViewScale,
+    updatePointerCursor, isPointInCanvas, getResizeCursor, hitSelectionFrame, getViewScale, applyEraser,
   } = options;
   let gesture = null;
 
@@ -77,14 +77,16 @@ export function useSketchPointer(options) {
     if (gesture.captureTarget?.hasPointerCapture(gesture.pointerId)) gesture.captureTarget.releasePointerCapture(gesture.pointerId);
     if (cancelled) { if (["move", "resize"].includes(gesture.type)) commands.value = gesture.previous; gesture = null; selectionCursor.value = selectedIndex.value >= 0 ? "grab" : "default"; render(); return; }
     if (gesture.type === "text") { const { point } = gesture; gesture = null; startText(point); return; }
+    const command = gesture.command;
+    if (["pen", "eraser"].includes(command?.type)) {
+      const endPoint = normalizePoint(eventPoint(event)); const lastPoint = command.points.at(-1);
+      if (Math.hypot(endPoint.x - lastPoint.x, endPoint.y - lastPoint.y) > 0.0001) command.points.push(endPoint);
+    }
     if (["move", "resize"].includes(gesture.type)) {
       if (gesture.moved) { pushHistory(gesture.previous); announce(gesture.type === "resize" ? "对象大小已调整" : "对象已移动"); }
+    } else if (gesture.type === "eraser") {
+      if (applyEraser(command)) { pushHistory(gesture.previous); announce("内容已擦除"); } else render();
     } else {
-      const command = gesture.command;
-      if (["pen", "eraser"].includes(command.type)) {
-        const endPoint = normalizePoint(eventPoint(event)); const lastPoint = command.points.at(-1);
-        if (Math.hypot(endPoint.x - lastPoint.x, endPoint.y - lastPoint.y) > 0.0001) command.points.push(endPoint);
-      }
       const start = command.type === "shape" ? pixelPoint(command.start) : null;
       const end = command.type === "shape" ? pixelPoint(command.end) : null;
       if (command.type !== "shape" || Math.hypot(end.x - start.x, end.y - start.y) > 3) {

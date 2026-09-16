@@ -8,7 +8,7 @@ const minSize = 12;
 const maxSize = 160;
 
 export function useSketchTextEditor(options) {
-  const { commands, selectedIndex, activeTool, strokeColor, selectionCursor, textEditor, textValue, clone, pushHistory, announce, render, selectCommand, normalizePoint, pixelPoint, eventPoint, getStageSize, getContext, input, getCamera, displaySize } = options;
+  const { commands, selectedIndex, activeTool, strokeColor, selectionCursor, textEditor, textValue, clone, pushHistory, announce, render, selectCommand, normalizePoint, pixelPoint, eventPoint, getStageSize, getContext, input, getCamera, displaySize, transformMasks = () => {} } = options;
   let transform = null;
 
   function displayWidth(command) {
@@ -69,7 +69,7 @@ export function useSketchTextEditor(options) {
     const size = Math.round(originalSize * scale * 10) / 10; command.size = command.worldSize ? getCamera().toWorldDistance(size) : size; setDisplayWidth(command, contentWidth * scale); const layout = textLayout(command, state.draft ? textValue.value : command.text); const outerWidth = layout.width + editorPadding * 2; const outerHeight = layout.height + editorPadding * 2; let x = anchor.x; let y = anchor.y; if (id.includes("w")) x -= outerWidth; else if (!id.includes("e")) x -= outerWidth / 2; if (id.includes("n")) y -= outerHeight; const normalized = normalizePoint({ x: x + editorPadding, y: y + editorPadding }); command.x = normalized.x; command.y = normalized.y;
   }
   function startTextTransform(event, type, handleId = null) { const command = commands.value[textEditor.value?.index]; if (!command) return; const point = eventPoint(event); transform = { type, handle: handleId ? { id: handleId } : null, start: normalizePoint(point), originalCommand: clone(command), originalBounds: textEditorBounds(command), draft: true }; event.currentTarget.setPointerCapture(event.pointerId); }
-  function moveTextTransform(event) { if (!transform || !textEditor.value) return; const command = commands.value[textEditor.value.index]; const point = eventPoint(event); if (transform.type === "move") { const normalized = normalizePoint(point); command.x = transform.originalCommand.x + normalized.x - transform.start.x; command.y = transform.originalCommand.y + normalized.y - transform.start.y; } else resizeTextCommand(command, point, transform); }
+  function moveTextTransform(event) { if (!transform || !textEditor.value) return; const command = commands.value[textEditor.value.index]; const point = eventPoint(event); if (transform.type === "move") { const normalized = normalizePoint(point); command.x = transform.originalCommand.x + normalized.x - transform.start.x; command.y = transform.originalCommand.y + normalized.y - transform.start.y; } else resizeTextCommand(command, point, transform); transformMasks(command, transform.originalCommand, transform.originalBounds, textEditorBounds(command)); }
   function finishTextTransform(event) { if (!transform) return; if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); transform = null; nextTick(() => input.value?.focus()); }
   return { textLayout, textEditorBounds, startText, beginTextEdit, commitText, cancelText, resizeTextCommand, startTextTransform, moveTextTransform, finishTextTransform, textEditorPadding: padding };
 }

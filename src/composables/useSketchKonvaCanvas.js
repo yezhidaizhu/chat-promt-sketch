@@ -17,6 +17,8 @@ export function useSketchKonvaCanvas({ commands, backgroundColor, isTextEditing,
   const spacePressed = ref(false);
   const isPanning = ref(false);
   const measurementContext = document.createElement("canvas").getContext("2d");
+  const maskedObjectCanvas = document.createElement("canvas");
+  const maskedObjectContext = maskedObjectCanvas.getContext("2d");
 
   let liveCommand = null;
   let eraserPreview = null;
@@ -33,8 +35,28 @@ export function useSketchKonvaCanvas({ commands, backgroundColor, isTextEditing,
     listening: false,
   }));
 
+  function drawMaskedCommand(context, command) {
+    if (!command.masks?.length) {
+      drawCommand(context, command);
+      return;
+    }
+    const pixelRatio = window.devicePixelRatio || 1;
+    const width = Math.max(1, Math.round(stageSize.value.width * pixelRatio));
+    const height = Math.max(1, Math.round(stageSize.value.height * pixelRatio));
+    if (maskedObjectCanvas.width !== width || maskedObjectCanvas.height !== height) {
+      maskedObjectCanvas.width = width;
+      maskedObjectCanvas.height = height;
+    }
+    maskedObjectContext.setTransform(1, 0, 0, 1, 0, 0);
+    maskedObjectContext.clearRect(0, 0, width, height);
+    maskedObjectContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    drawCommand(maskedObjectContext, command);
+    command.masks.forEach((mask) => drawCommand(maskedObjectContext, mask));
+    context.drawImage(maskedObjectCanvas, 0, 0, stageSize.value.width, stageSize.value.height);
+  }
+
   function drawContentScene(context) {
-    commands.value.forEach((command) => drawCommand(context, command));
+    commands.value.forEach((command) => drawMaskedCommand(context, command));
     if (eraserPreview) drawCommand(context, eraserPreview);
   }
 
