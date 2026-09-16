@@ -78,12 +78,10 @@ const dialogStyle = computed(() => {
   const style = { "--sketch-ratio": ratioValue.value };
   if (interfaceFullscreen.value || !effectiveControlsOutside.value) return style;
 
-  const isNarrow = viewport.value.width <= 720;
-  const outsideWidth = isNarrow ? 0 : 128;
   const outsideHeight = 104;
   const canvasWidth = Math.min(
     760,
-    viewport.value.width - 32 - outsideWidth,
+    viewport.value.width - 32,
     (viewport.value.height - 32 - outsideHeight) * ratioValue.value,
   );
   return {
