@@ -140,8 +140,8 @@ function onKeydown(event) {
 .size-control__scale {
   position: absolute;
   top: var(--sketch-slider-inset);
-  left: 8px;
-  width: 32px;
+  left: 10px;
+  width: 28px;
   height: 192px;
   background: var(--sketch-slider-scale);
   clip-path: polygon(0 0, 100% 0, 53% 100%, 47% 100%);
@@ -234,8 +234,8 @@ function onKeydown(event) {
 
 .brush-controls.is-outside .size-control__scale {
   top: var(--sketch-slider-inset);
-  left: 8px;
-  width: 32px;
+  left: 10px;
+  width: 28px;
   height: 192px;
   clip-path: polygon(0 0, 100% 0, 53% 100%, 47% 100%);
   transform-origin: 50% 100%;
