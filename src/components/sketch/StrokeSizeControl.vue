@@ -134,6 +134,7 @@ function onKeydown(event) {
   width: 2px;
   border-radius: var(--sketch-radius-pill);
   background: var(--sketch-slider-track);
+  opacity: 0.45;
   transform: translateX(-50%);
   transition: opacity var(--sketch-transition-fast);
 }
