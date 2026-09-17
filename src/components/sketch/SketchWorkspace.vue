@@ -1,5 +1,5 @@
 <script setup>
-import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import ColorPalette from "./ColorPalette.vue";
 import ObjectContextMenu from "./ObjectContextMenu.vue";
 import OutputActions from "./OutputActions.vue";
@@ -14,9 +14,10 @@ import { useSketchPointer } from "../../composables/useSketchPointer.js";
 import { useSketchSelection } from "../../composables/useSketchSelection.js";
 import { useSketchTextEditor } from "../../composables/useSketchTextEditor.js";
 import { useSketchKonvaCanvas } from "../../composables/useSketchKonvaCanvas.js";
-import { useSketchImageAssets } from "../../composables/useSketchImageAssets.js";
+import { useSketchImageImport } from "../../composables/useSketchImageImport.js";
+import { useSketchOutput } from "../../composables/useSketchOutput.js";
+import { useSketchDialogLayout } from "../../composables/useSketchDialogLayout.js";
 import { closePopover, openPopover } from "../../composables/usePopover.js";
-import { dismissToast, showToast } from "../../composables/useToast.js";
 import { isSelectionFrameHit as hitSelectionFrame, resizeCursor as getResizeCursor } from "../../utils/hitTest.js";
 import { drawFreehand, drawShape } from "../../utils/sketchDrawing.js";
 import { createSketchCamera } from "../../utils/sketchCamera.js";
@@ -47,9 +48,6 @@ const teleportTarget = inject("TeleportTarget", "body");
 
 const dialog = ref(null);
 const textInput = ref(null);
-const imageInput = ref(null);
-const imageLoading = ref(false);
-const imageDragActive = ref(false);
 const objectContextMenu = ref(null);
 const {
   activeTool, activeShape, strokeColor, strokeSize, backgroundColor, commands, selectedIndex,
@@ -58,35 +56,11 @@ const {
 } = useSketchState();
 const pointerCursor = ref({ x: 0, y: 0, visible: false });
 const statusMessage = ref("");
-const viewport = ref({ width: window.innerWidth, height: window.innerHeight });
-const copySucceeded = ref(false);
-const attaching = ref(false);
 const strokeSizePreviewVisible = ref(false);
 const backgroundPreviewColor = ref(null);
-const drawingRatio = ref(1);
-const localLayout = ref(props.initialLayout);
-const canvasLayout = computed({
-  get: () => props.layout || localLayout.value,
-  set: (value) => {
-    localLayout.value = value;
-    emit("update:layout", value);
-  },
-});
-const interfaceFullscreen = computed({
-  get: () => canvasLayout.value === "fill",
-  set: (value) => { canvasLayout.value = value ? "fill" : "ratio"; },
-});
-const browserFullscreen = ref(Boolean(document.fullscreenElement));
-const isFullscreen = computed(() => interfaceFullscreen.value || browserFullscreen.value);
-const effectiveControlsOutside = computed(() => !props.embedded && controlsOutside.value && !isFullscreen.value);
 const canvasBackgroundColor = computed(() => backgroundPreviewColor.value || backgroundColor.value);
-const { addImageFile, addImageUrl, getImage } = useSketchImageAssets();
 
 let textTransform = null;
-let resizeObserver;
-let copyFeedbackTimer;
-let browserFullscreenTransition;
-let imageDragDepth = 0;
 let commandId = 0;
 
 const textEditorPadding = 6;
@@ -98,27 +72,6 @@ const textMaxSize = 160;
 
 const copy = locale.sketch;
 const toolLabels = copy.tools;
-const ratioValue = computed(() => {
-  const [width, height] = canvasRatio.value.split(":").map(Number);
-  return width / height;
-});
-const dialogStyle = computed(() => {
-  const style = { "--sketch-ratio": ratioValue.value };
-  if (interfaceFullscreen.value || !effectiveControlsOutside.value) return style;
-
-  const outsideHeight = 104;
-  const outsideWidth = 60;
-  const canvasWidth = Math.min(
-    760,
-    viewport.value.width - 32 - outsideWidth,
-    (viewport.value.height - 32 - outsideHeight) * ratioValue.value,
-  );
-  return {
-    ...style,
-    "--sketch-outside-offset-x": `${outsideWidth / 2}px`,
-    width: `${canvasWidth}px`,
-  };
-});
 let selectionApi;
 const {
   container: stage,
@@ -163,6 +116,30 @@ const {
   beforeRender: migrateLegacyCommands,
   drawCommand,
   drawSelection: (context) => selectionApi?.drawSelection(context),
+});
+const {
+  drawingRatio,
+  ratioValue,
+  dialogStyle,
+  interfaceFullscreen,
+  browserFullscreen,
+  isFullscreen,
+  effectiveControlsOutside,
+  changeCanvasRatio,
+  toggleBrowserFullscreen,
+} = useSketchDialogLayout({
+  dialog,
+  stage,
+  controlsOutside,
+  canvasRatio,
+  commands,
+  initialLayout: props.initialLayout,
+  getLayout: () => props.layout,
+  getEmbedded: () => props.embedded,
+  getModelValue: () => props.modelValue,
+  emitLayout: (value) => emit("update:layout", value),
+  resizeCanvases,
+  announce,
 });
 const camera = computed(() => createSketchCamera({
   width: stageSize.value.width,
@@ -219,6 +196,39 @@ const { undoStack, redoStack, canUndo, canRedo, clone, pushHistory, undo, redo }
   () => ({ backgroundColor: backgroundColor.value }),
   { undo: copy.messages.undone, redo: copy.messages.redone },
 );
+const {
+  imageInput,
+  imageLoading,
+  imageDragActive,
+  getImage,
+  openImagePicker,
+  addImage,
+  handleImageDragEnter,
+  handleImageDragOver,
+  handleImageDragLeave,
+  handleImageDrop,
+} = useSketchImageImport({
+  stage,
+  stageSize,
+  commands,
+  activeTool,
+  selectedIndex,
+  selectionCursor,
+  clone,
+  pushHistory,
+  announce,
+  normalizePoint,
+  eventPoint,
+  setPanMode,
+});
+const { copySucceeded, attaching, copyCanvas, downloadCanvas, attachCanvas } = useSketchOutput({
+  hasContent,
+  createOutputCanvas,
+  getSubmit: () => props.submit,
+  emitDownload: (filename) => emit("download", filename),
+  announce,
+  close: closeDialog,
+});
 let controls;
 const displaySize = (command) => command.worldSize ? camera.value.toScreenDistance(command.size) : command.size;
 const { textLayout, textEditorBounds, startText, beginTextEdit, commitText, cancelText, resizeTextCommand, startTextTransform, moveTextTransform, finishTextTransform } = useSketchTextEditor({ commands, selectedIndex, activeTool, strokeColor, selectionCursor, textEditor, textValue, clone, pushHistory, announce, render, selectCommand: (...args) => controls.selectCommand(...args), normalizePoint, pixelPoint, eventPoint, getStageSize: () => stageSize.value, getContext: () => measurementContext, input: textInput, getCamera: () => camera.value, displaySize, transformMasks: transformCommandMasks });
@@ -245,61 +255,6 @@ const objectContextMenuStyle = computed(() => {
   const top = Math.min(stageSize.value.height - height - gap, Math.max(gap, objectContextMenu.value.y));
   return { left: `${left}px`, top: `${top}px` };
 });
-
-function waitForCanvasTransition() {
-  return new Promise((resolve) => {
-    const element = dialog.value;
-    if (!element) { resolve(); return; }
-    let timer;
-    const finish = () => {
-      clearTimeout(timer);
-      element.removeEventListener("transitionend", onTransitionEnd);
-      resolve();
-    };
-    const onTransitionEnd = (event) => {
-      if (event.target === element && ["width", "aspect-ratio"].includes(event.propertyName)) finish();
-    };
-    element.addEventListener("transitionend", onTransitionEnd);
-    timer = setTimeout(finish, 240);
-  });
-}
-
-async function changeCanvasRatio(ratio) {
-  const fillWindow = ratio === "fill";
-  if (fillWindow === interfaceFullscreen.value && (fillWindow || ratio === canvasRatio.value)) {
-    closePopover();
-    return;
-  }
-  interfaceFullscreen.value = fillWindow;
-  if (!fillWindow) {
-    canvasRatio.value = ratio;
-    if (!commands.value.length) drawingRatio.value = ratioValue.value;
-  }
-  closePopover();
-  await nextTick();
-  await waitForCanvasTransition();
-  resizeCanvases();
-  announce(fillWindow ? copy.messages.canvasFilled : copy.messages.canvasRatio(ratio));
-}
-
-async function toggleBrowserFullscreen() {
-  try {
-    browserFullscreenTransition = true;
-    if (document.fullscreenElement) await document.exitFullscreen();
-    else await document.documentElement.requestFullscreen();
-  } catch {
-    announce(copy.messages.fullscreenUnsupported);
-  }
-}
-
-async function syncBrowserFullscreen() {
-  browserFullscreen.value = Boolean(document.fullscreenElement);
-  if (!browserFullscreenTransition) return;
-  browserFullscreenTransition = null;
-  await nextTick();
-  await waitForCanvasTransition();
-  resizeCanvases();
-}
 
 function announce(message) {
   statusMessage.value = "";
@@ -392,10 +347,6 @@ function drawCommand(context, command, preview = false) {
     });
     context.restore();
   }
-}
-
-function updateViewport() {
-  viewport.value = { width: window.innerWidth, height: window.innerHeight };
 }
 
 function translateCommand(command, dx, dy) {
@@ -641,103 +592,6 @@ function toggleShapeMenu(anchor) {
   openShapeMenu(anchor);
 }
 
-function openImagePicker() {
-  imageInput.value?.click();
-}
-
-async function addImage(event) {
-  const file = event.target.files?.[0];
-  event.target.value = "";
-  if (!file) return;
-  await insertImage(file);
-}
-
-async function insertImage(source, dropPoint = null) {
-  if (imageLoading.value) return;
-  dismissToast();
-  imageLoading.value = true;
-  announce(copy.messages.imageLoading);
-  try {
-    const asset = typeof source === "string" ? await addImageUrl(source) : await addImageFile(source);
-    const maxWidth = stageSize.value.width * 0.6;
-    const maxHeight = stageSize.value.height * 0.6;
-    const scale = Math.min(1, maxWidth / asset.width, maxHeight / asset.height);
-    const width = Math.max(1, asset.width * scale);
-    const height = Math.max(1, asset.height * scale);
-    const x = dropPoint ? Math.min(stageSize.value.width - width, Math.max(0, dropPoint.x - width / 2)) : (stageSize.value.width - width) / 2;
-    const y = dropPoint ? Math.min(stageSize.value.height - height, Math.max(0, dropPoint.y - height / 2)) : (stageSize.value.height - height) / 2;
-    const start = normalizePoint({ x, y });
-    const end = normalizePoint({ x: x + width, y: y + height });
-    const previous = clone();
-    commands.value.push({
-      type: "image",
-      assetId: asset.id,
-      x: start.x,
-      y: start.y,
-      width: end.x - start.x,
-      height: end.y - start.y,
-      worldSize: true,
-    });
-    setPanMode(false);
-    activeTool.value = "select";
-    selectedIndex.value = commands.value.length - 1;
-    selectionCursor.value = "grab";
-    pushHistory(previous);
-    stage.value?.focus();
-    announce(copy.messages.imageAdded);
-  } catch (error) {
-    const message = error.message === "too-large" ? copy.messages.imageTooLarge : error.message === "url-unavailable" ? copy.messages.imageUrlUnavailable : error.message === "unsupported" ? copy.messages.imageUnsupported : copy.messages.imageLoadFailed;
-    showToast(message, { type: "error" });
-  } finally {
-    imageLoading.value = false;
-  }
-}
-
-function isImageDrag(event) {
-  const types = Array.from(event.dataTransfer?.types || [], (type) => type.toLowerCase());
-  return types.some((type) => ["files", "text/html", "text/uri-list", "text/plain", "downloadurl"].includes(type));
-}
-
-function handleImageDragEnter(event) {
-  if (!isImageDrag(event)) return;
-  event.preventDefault();
-  imageDragDepth += 1;
-  imageDragActive.value = true;
-}
-
-function handleImageDragOver(event) {
-  if (!isImageDrag(event)) return;
-  event.preventDefault();
-  event.dataTransfer.dropEffect = "copy";
-}
-
-function handleImageDragLeave(event) {
-  if (!imageDragActive.value) return;
-  event.preventDefault();
-  imageDragDepth = Math.max(0, imageDragDepth - 1);
-  if (!imageDragDepth) imageDragActive.value = false;
-}
-
-async function handleImageDrop(event) {
-  event.preventDefault();
-  imageDragDepth = 0;
-  imageDragActive.value = false;
-  const files = Array.from(event.dataTransfer?.files || []);
-  const file = files.find((item) => item.type.startsWith("image/")) || files[0];
-  let source = file;
-  if (!source) {
-    const html = event.dataTransfer?.getData("text/html") || "";
-    const imageSource = html ? new DOMParser().parseFromString(html, "text/html").querySelector("img")?.getAttribute("src") : "";
-    const uri = (event.dataTransfer?.getData("text/uri-list") || "").split(/\r?\n/).find((line) => line && !line.startsWith("#"));
-    const downloadUrl = (event.dataTransfer?.getData("DownloadURL") || "").match(/^[^:]+:[^:]*:(.+)$/)?.[1];
-    const plainText = (event.dataTransfer?.getData("text/plain") || "").trim();
-    source = imageSource || uri || downloadUrl || plainText || "";
-  }
-  if (!source) return;
-  closePopover();
-  await insertImage(source, eventPoint(event));
-}
-
 function confirmClearCanvas() {
   if (!hasContent.value) return;
   const previous = clone();
@@ -749,28 +603,6 @@ function confirmClearCanvas() {
   pushHistory(previous);
   resetView();
   announce(copy.messages.canvasCleared);
-}
-
-async function copyCanvas() {
-  if (!hasContent.value || !navigator.clipboard || typeof ClipboardItem === "undefined") {
-    announce(copy.messages.copyUnsupported);
-    return;
-  }
-  const output = createOutputCanvas();
-  if (!output) return;
-  output.toBlob(async (blob) => {
-    if (!blob) return;
-    try {
-      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-      copySucceeded.value = true;
-      clearTimeout(copyFeedbackTimer);
-      copyFeedbackTimer = setTimeout(() => { copySucceeded.value = false; }, 1600);
-      announce(copy.messages.imageCopied);
-    } catch {
-      copySucceeded.value = false;
-      announce(copy.messages.copyFailed);
-    }
-  }, "image/png");
 }
 
 function requestClearCanvas(anchor) {
@@ -816,45 +648,6 @@ function setBackgroundColor(color) {
   pushHistory(previous, previousContext);
   render();
   announce(copy.messages.backgroundUpdated);
-}
-
-function downloadCanvas() {
-  const output = createOutputCanvas();
-  if (!output) return;
-
-  const link = document.createElement("a");
-  link.download = `sketch-${new Date().toISOString().slice(0, 10)}.png`;
-  link.href = output.toDataURL("image/png");
-  link.click();
-  emit("download", link.download);
-  announce(copy.messages.imageDownloaded);
-}
-
-async function attachCanvas() {
-  if (!hasContent.value || !props.submit || attaching.value) return;
-  const output = createOutputCanvas();
-  if (!output) return;
-  const blob = await new Promise((resolve) => output.toBlob(resolve, "image/png"));
-  if (!blob) {
-    announce("Unable to generate PNG");
-    return;
-  }
-
-  attaching.value = true;
-  try {
-    const result = await props.submit({
-      blob,
-      filename: `chat-sketch-${new Date().toISOString().slice(0, 10)}.png`,
-      width: output.width,
-      height: output.height,
-    });
-    announce(result?.message || (result?.ok ? "Sketch attached to chat." : "Sketch attachment failed."));
-    if (result?.ok) closeDialog();
-  } catch {
-    announce("Sketch attachment failed.");
-  } finally {
-    attaching.value = false;
-  }
 }
 
 function closeDialog() {
@@ -933,19 +726,6 @@ function onKeyup(event) {
   if (event.code === "Space") setSpacePressed(false);
 }
 
-watch(
-  () => props.modelValue,
-  async (isOpen) => {
-    await nextTick();
-    if (!dialog.value) return;
-    if (isOpen) {
-      await nextTick();
-      resizeCanvases();
-      stage.value.focus();
-    }
-  },
-);
-
 watch(strokeSize, (size) => announce(copy.messages.brushSize(size)));
 watch(activePopover, (active, previous) => {
   if (previous === "background" && active !== "background" && backgroundPreviewColor.value) {
@@ -960,33 +740,16 @@ watch(textValue, (value) => {
 });
 
 onMounted(() => {
-  drawingRatio.value = ratioValue.value;
-  resizeObserver = new ResizeObserver(() => {
-    if (props.modelValue) resizeCanvases();
-  });
-  resizeObserver.observe(stage.value);
-  window.addEventListener("resize", updateViewport);
   window.addEventListener("pointerup", finishStagePointer);
   window.addEventListener("pointercancel", cancelWindowPointer);
   window.addEventListener("blur", cancelPan);
-  document.addEventListener("fullscreenchange", syncBrowserFullscreen);
-  if (props.modelValue) {
-    nextTick(() => {
-      resizeCanvases();
-      stage.value.focus();
-    });
-  }
 });
 
 onBeforeUnmount(() => {
-  resizeObserver?.disconnect();
-  clearTimeout(copyFeedbackTimer);
   cancelPan();
-  window.removeEventListener("resize", updateViewport);
   window.removeEventListener("pointerup", finishStagePointer);
   window.removeEventListener("pointercancel", cancelWindowPointer);
   window.removeEventListener("blur", cancelPan);
-  document.removeEventListener("fullscreenchange", syncBrowserFullscreen);
 });
 </script>
 
