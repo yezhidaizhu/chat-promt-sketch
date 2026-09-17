@@ -20,7 +20,7 @@ const props = defineProps({
   outside: Boolean,
 });
 
-const emit = defineEmits(["update:modelValue"]);
+const emit = defineEmits(["update:modelValue", "adjust-start", "adjust-end"]);
 const dragging = ref(false);
 
 const ratio = computed(() => (props.modelValue - props.min) / (props.max - props.min));
@@ -42,6 +42,7 @@ function updateValue(event, element) {
 
 function startDrag(event) {
   dragging.value = true;
+  emit("adjust-start");
   event.currentTarget.setPointerCapture(event.pointerId);
   updateValue(event, event.currentTarget);
 }
@@ -58,6 +59,7 @@ function moveDrag(event) {
 function finishDrag(event) {
   if (!dragging.value) return;
   dragging.value = false;
+  emit("adjust-end");
   if (event.currentTarget.hasPointerCapture(event.pointerId)) {
     event.currentTarget.releasePointerCapture(event.pointerId);
   }
@@ -71,7 +73,14 @@ function onKeydown(event) {
   else if (steps[event.key]) value += steps[event.key];
   else return;
   event.preventDefault();
+  emit("adjust-start");
   emit("update:modelValue", Math.min(props.max, Math.max(props.min, value)));
+}
+
+function onKeyup(event) {
+  if (["Home", "End", "PageUp", "PageDown", "ArrowUp", "ArrowRight", "ArrowDown", "ArrowLeft"].includes(event.key)) {
+    emit("adjust-end");
+  }
 }
 </script>
 
@@ -95,6 +104,7 @@ function onKeydown(event) {
       @pointercancel.prevent="finishDrag"
       @lostpointercapture="finishDrag"
       @keydown="onKeydown"
+      @keyup="onKeyup"
     >
       <span class="size-control__track" aria-hidden="true"></span>
       <span class="size-control__scale" aria-hidden="true"></span>

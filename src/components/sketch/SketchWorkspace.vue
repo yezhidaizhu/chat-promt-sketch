@@ -5,6 +5,7 @@ import ObjectContextMenu from "./ObjectContextMenu.vue";
 import OutputActions from "./OutputActions.vue";
 import SketchToolbar from "./SketchToolbar.vue";
 import StrokeSizeControl from "./StrokeSizeControl.vue";
+import StrokeSizePreview from "./StrokeSizePreview.vue";
 import SketchTextEditor from "./SketchTextEditor.vue";
 import { useHistory } from "../../composables/useHistory.js";
 import { useSketchState } from "../../composables/useSketchState.js";
@@ -60,6 +61,7 @@ const statusMessage = ref("");
 const viewport = ref({ width: window.innerWidth, height: window.innerHeight });
 const copySucceeded = ref(false);
 const attaching = ref(false);
+const strokeSizePreviewVisible = ref(false);
 const backgroundPreviewColor = ref(null);
 const drawingRatio = ref(1);
 const localLayout = ref(props.initialLayout);
@@ -222,6 +224,14 @@ const displaySize = (command) => command.worldSize ? camera.value.toScreenDistan
 const { textLayout, textEditorBounds, startText, beginTextEdit, commitText, cancelText, resizeTextCommand, startTextTransform, moveTextTransform, finishTextTransform } = useSketchTextEditor({ commands, selectedIndex, activeTool, strokeColor, selectionCursor, textEditor, textValue, clone, pushHistory, announce, render, selectCommand: (...args) => controls.selectCommand(...args), normalizePoint, pixelPoint, eventPoint, getStageSize: () => stageSize.value, getContext: () => measurementContext, input: textInput, getCamera: () => camera.value, displaySize, transformMasks: transformCommandMasks });
 controls = useSketchControls({ state: { activeTool, activeShape, strokeColor, strokeSize, commands, selectedIndex, activePopover, controlsOutside, canvasRatio, textEditor, selectionCursor, selectedCommand }, clone, pushHistory, render, resizeCanvases, announce, commitText, onRatioChange: changeCanvasRatio, getCurrentRatio: () => interfaceFullscreen.value ? "fill" : canvasRatio.value, getViewScale: () => camera.value.scale });
 const { selectTool: selectDrawingTool, toggleShapeMenu: openShapeMenu, toggleControlsOutside, toggleRatioMenu, selectShape, selectCommand, setStrokeSize, setStrokeColor } = controls;
+
+function showStrokeSizePreview() {
+  strokeSizePreviewVisible.value = true;
+}
+
+function hideStrokeSizePreview() {
+  strokeSizePreviewVisible.value = false;
+}
 selectionApi = useSketchSelection({ commands, selectedIndex, pixelPoint, textLayout, displaySize });
 const { commandBounds, geometryBounds, selectionBounds, findResizeHandle, resizeBounds, findCommand } = selectionApi;
 const canMoveBackward = computed(() => selectedIndex.value > 0);
@@ -1072,6 +1082,8 @@ onBeforeUnmount(() => {
 
           <span class="brush-cursor" :style="pointerCursorStyle" aria-hidden="true"></span>
 
+          <StrokeSizePreview :visible="strokeSizePreviewVisible" :size="strokeSize" :color="strokeColor" />
+
           <SketchTextEditor
             v-if="textEditor"
             ref="textInput"
@@ -1089,7 +1101,13 @@ onBeforeUnmount(() => {
         </div>
         <ColorPalette :model-value="strokeColor" :outside="effectiveControlsOutside" @update:model-value="setStrokeColor" />
         <OutputActions :disabled="!hasContent" :can-copy="hasContent" :can-attach="Boolean(submit)" :attaching="attaching" :copy-succeeded="copySucceeded" :outside="effectiveControlsOutside" @attach="attachCanvas" @download="downloadCanvas" @copy="copyCanvas" />
-        <StrokeSizeControl :model-value="strokeSize" :outside="effectiveControlsOutside" @update:model-value="setStrokeSize" />
+        <StrokeSizeControl
+          :model-value="strokeSize"
+          :outside="effectiveControlsOutside"
+          @adjust-start="showStrokeSizePreview"
+          @adjust-end="hideStrokeSizePreview"
+          @update:model-value="setStrokeSize"
+        />
         <div class="sr-only" aria-live="polite">{{ statusMessage }}</div>
       </section>
       </div>
