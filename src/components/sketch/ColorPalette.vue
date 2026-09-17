@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { sketchConfig } from "../../config/sketch.js";
 import { locale } from "../../locales/index.js";
 import { scrollWheelHorizontally } from "../../utils/scroll.js";
@@ -15,8 +15,19 @@ const props = defineProps({
 });
 
 const emit = defineEmits(["update:modelValue"]);
+const palette = ref(null);
+const hasColorsBefore = ref(false);
+const hasColorsAfter = ref(false);
 let colorFrame = 0;
 let pendingColor = "";
+let paletteObserver;
+
+function updateOverflowHints() {
+  const element = palette.value;
+  if (!element) return;
+  hasColorsBefore.value = element.scrollLeft > 2;
+  hasColorsAfter.value = element.scrollLeft + element.clientWidth < element.scrollWidth - 2;
+}
 
 function queueCustomColor(event) {
   pendingColor = event.target.value;
@@ -34,8 +45,16 @@ function flushCustomColor(event) {
   emit("update:modelValue", pendingColor);
 }
 
+onMounted(async () => {
+  await nextTick();
+  updateOverflowHints();
+  paletteObserver = new ResizeObserver(updateOverflowHints);
+  paletteObserver.observe(palette.value);
+});
+
 onBeforeUnmount(() => {
   cancelAnimationFrame(colorFrame);
+  paletteObserver?.disconnect();
 });
 
 const colors = sketchConfig.inkColors.map((color) => ({ ...color, name: copy.colors[color.id] }));
@@ -45,30 +64,31 @@ const isCustom = computed(() => !colors.some((color) => color.value === props.mo
 
 <template>
   <div class="color-controls" :class="{ 'is-outside': outside }">
-    <fieldset class="color-palette" :aria-label="copy.labels.palette" @wheel="scrollWheelHorizontally">
-      <legend class="sr-only">{{ copy.labels.palette }}</legend>
-      <label
-        class="color-button custom-color"
-        :class="{ 'is-selected': isCustom }"
-        :title="copy.labels.customInk"
-        :aria-label="copy.labels.customInk"
-      >
-        <input :value="modelValue" type="color" @input="queueCustomColor" @change="flushCustomColor" />
-      </label>
-      <button
-        v-for="color in colors"
-        :key="color.value"
-        class="color-button"
-        :class="{ 'is-selected': modelValue.toLowerCase() === color.value }"
-        type="button"
-        :title="color.name"
-        :aria-label="`Use ${color.name}`"
-        :aria-pressed="modelValue.toLowerCase() === color.value"
-        :style="{ backgroundColor: color.value }"
-        @click="emit('update:modelValue', color.value)"
-      ></button>
-    </fieldset>
-
+    <div class="color-palette-shell" :class="{ 'has-colors-before': hasColorsBefore, 'has-colors-after': hasColorsAfter }">
+      <fieldset ref="palette" class="color-palette" :aria-label="copy.labels.palette" @scroll.passive="updateOverflowHints" @wheel="scrollWheelHorizontally">
+        <legend class="sr-only">{{ copy.labels.palette }}</legend>
+        <label
+          class="color-button custom-color"
+          :class="{ 'is-selected': isCustom }"
+          :title="copy.labels.customInk"
+          :aria-label="copy.labels.customInk"
+        >
+          <input :value="modelValue" type="color" @input="queueCustomColor" @change="flushCustomColor" />
+        </label>
+        <button
+          v-for="color in colors"
+          :key="color.value"
+          class="color-button"
+          :class="{ 'is-selected': modelValue.toLowerCase() === color.value }"
+          type="button"
+          :title="color.name"
+          :aria-label="`Use ${color.name}`"
+          :aria-pressed="modelValue.toLowerCase() === color.value"
+          :style="{ backgroundColor: color.value }"
+          @click="emit('update:modelValue', color.value)"
+        ></button>
+      </fieldset>
+    </div>
   </div>
 </template>
 
@@ -90,9 +110,14 @@ const isCustom = computed(() => !colors.some((color) => color.value === props.mo
   bottom: calc(-1 * (40px + var(--sketch-space-3)));
 }
 
-.color-palette {
+.color-palette-shell {
+  position: relative;
   grid-column: 2;
   align-self: center;
+  min-width: 0;
+}
+
+.color-palette {
   display: flex;
   min-width: 0;
   align-items: center;
@@ -101,6 +126,21 @@ const isCustom = computed(() => !colors.some((color) => color.value === props.mo
   padding: 6px 4px;
   border: 0;
   pointer-events: auto;
+}
+
+.color-palette-shell.has-colors-after:not(.has-colors-before) .color-palette {
+  -webkit-mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 32px), transparent 100%);
+  mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 32px), transparent 100%);
+}
+
+.color-palette-shell.has-colors-before:not(.has-colors-after) .color-palette {
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 32px, #000 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 32px, #000 100%);
+}
+
+.color-palette-shell.has-colors-before.has-colors-after .color-palette {
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 32px, #000 calc(100% - 32px), transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 32px, #000 calc(100% - 32px), transparent 100%);
 }
 
 .color-button {
@@ -165,9 +205,12 @@ const isCustom = computed(() => !colors.some((color) => color.value === props.mo
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .color-palette {
+  .color-palette-shell {
     grid-column: 1;
     width: 100%;
+  }
+
+  .color-palette {
     max-width: none;
     justify-content: flex-start;
     overflow-x: auto;
@@ -182,11 +225,15 @@ const isCustom = computed(() => !colors.some((color) => color.value === props.mo
 @media (max-width: 720px) {
   .color-controls.is-outside {
     right: calc(var(--sketch-control-size) + var(--sketch-space-1) * 2 + 42px);
-    left: 136px;
+    left: 0;
+  }
+
+  .color-controls.is-outside .color-palette-shell,
+  .color-controls.is-outside .color-palette {
+    width: 100%;
   }
 
   .color-controls.is-outside .color-palette {
-    width: 100%;
     max-width: none;
     justify-content: flex-start;
     overflow-x: auto;
@@ -203,8 +250,12 @@ const isCustom = computed(() => !colors.some((color) => color.value === props.mo
     right: calc(var(--sketch-space-3) + var(--sketch-control-size) * 2 + var(--sketch-space-1) * 2 + 10px);
   }
 
+  .color-palette-shell,
   .color-palette {
     width: 100%;
+  }
+
+  .color-palette {
     max-width: none;
     justify-content: flex-start;
     overflow-x: auto;

@@ -6,12 +6,12 @@ import SketchPopoverRoot from "./components/SketchPopoverRoot.vue";
 import ToastRoot from "./components/ToastRoot.vue";
 import { locale } from "./locales/index.js";
 
-const isSketchOpen = ref(false);
+const isSketchOpen = ref(true);
 const copy = locale.sketch;
 </script>
 
 <template>
-  <main class="demo-page">
+  <main class="demo-page chat-sketch-canvas">
     <button class="open-button" type="button" @click="isSketchOpen = true">
       <Pencil :size="19" aria-hidden="true" />
       {{ copy.labels.openSketch }}
@@ -26,6 +26,7 @@ const copy = locale.sketch;
 <style scoped>
 .demo-page {
   display: grid;
+  box-sizing: border-box;
   min-height: 100dvh;
   padding: 24px;
   place-items: center;

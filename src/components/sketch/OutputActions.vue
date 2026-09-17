@@ -1,6 +1,6 @@
 <script setup>
 import { ref } from "vue";
-import { Check, ChevronsDown, ChevronsUp, Copy, Download } from "@lucide/vue";
+import { Check, ChevronsDown, ChevronsUp, Copy, Download, Paperclip } from "@lucide/vue";
 import SketchControlPill from "./SketchControlPill.vue";
 import { locale } from "../../locales/index.js";
 
@@ -9,21 +9,25 @@ const copy = locale.sketch;
 defineProps({
   disabled: Boolean,
   canCopy: Boolean,
+  canAttach: Boolean,
+  attaching: Boolean,
   copySucceeded: Boolean,
   outside: Boolean,
 });
 
-const emit = defineEmits(["download", "copy"]);
+const emit = defineEmits(["attach", "download", "copy"]);
 const expanded = ref(false);
 </script>
 
 <template>
   <div class="output-actions" :class="{ 'is-outside': outside }">
-    <SketchControlPill class="output-main" :class="{ 'is-expanded': expanded }">
+    <SketchControlPill class="output-main" :class="{ 'is-expanded': expanded, 'is-three-actions': expanded && canAttach }">
+      <button v-if="expanded && canAttach" class="output-button" type="button" :title="copy.labels.attachToChat" :aria-label="copy.labels.attachToChat" :disabled="disabled || attaching" @click="emit('attach')"><Paperclip :size="18" aria-hidden="true" /></button>
       <button v-if="expanded" class="output-button copy-button" :class="{ 'is-success': copySucceeded }" type="button" :title="copy.labels.copyPng" :aria-label="copy.labels.copyPng" :disabled="!canCopy || copySucceeded" @click="emit('copy')"><Check v-if="copySucceeded" :size="19" aria-hidden="true" /><Copy v-else :size="18" aria-hidden="true" /></button>
       <div v-if="expanded" class="download-section">
         <button class="output-button" type="button" :title="copy.labels.downloadPng" :aria-label="copy.labels.downloadPng" :disabled="disabled" @click="emit('download')"><Download :size="19" aria-hidden="true" /></button>
       </div>
+      <button v-else-if="canAttach" class="output-button" type="button" :title="copy.labels.attachToChat" :aria-label="copy.labels.attachToChat" :disabled="disabled || attaching" @click="emit('attach')"><Paperclip :size="18" aria-hidden="true" /></button>
       <button v-else class="output-button" type="button" :title="copy.labels.downloadPng" :aria-label="copy.labels.downloadPng" :disabled="disabled" @click="emit('download')"><Download :size="19" aria-hidden="true" /></button>
     </SketchControlPill>
     <button class="output-toggle" type="button" :title="expanded ? copy.labels.collapseOutputActions : copy.labels.expandOutputActions" :aria-label="expanded ? copy.labels.collapseOutputActions : copy.labels.expandOutputActions" :aria-expanded="expanded" @click="expanded = !expanded"><ChevronsDown v-if="expanded" :size="18" aria-hidden="true" /><ChevronsUp v-else :size="18" aria-hidden="true" /></button>
@@ -59,6 +63,11 @@ const expanded = ref(false);
   gap: 0;
   padding: 0;
   border-radius: var(--sketch-radius-pill) var(--sketch-radius-pill) 0 var(--sketch-radius-pill);
+}
+
+.output-main.is-expanded.is-three-actions {
+  height: calc(var(--sketch-control-size) * 3 + var(--sketch-space-1) * 6 + 6px);
+  grid-template-rows: repeat(3, calc(var(--sketch-control-size) + var(--sketch-space-1) * 2 + 1px));
 }
 
 .download-section {

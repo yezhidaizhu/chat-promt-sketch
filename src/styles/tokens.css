@@ -1,4 +1,9 @@
-:root {
+:where(
+  .chat-sketch-canvas,
+  .chat-sketch-canvas-popover,
+  .chat-sketch-canvas-toast,
+  .chat-sketch-canvas-tooltip
+) {
   --font-ui: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 
   --app-color-bg: #f2f1ed;

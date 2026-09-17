@@ -119,7 +119,7 @@ onBeforeUnmount(() => {
 
 <template><div v-if="open" ref="popover" class="floating-popover" :class="[`is-${variant}`, { 'is-positioned': isPositioned }]" role="menu" @pointerdown.stop><slot /></div></template>
 
-<style>
+<style scoped>
 .floating-popover { --floating-popover-padding: 10px; position: fixed; z-index: 2147483647; inset: auto; top: 0; left: 0; width: max-content; height: auto; box-sizing: border-box; overflow: hidden; margin: 0; padding: var(--floating-popover-padding); visibility: hidden; pointer-events: auto; border: 1px solid var(--sketch-color-border); border-radius: 20px; background: var(--sketch-color-surface-raised); box-shadow: var(--sketch-shadow-popover); }
 .floating-popover.is-pill { --floating-popover-padding: var(--sketch-space-1); border-radius: var(--sketch-radius-pill); }
 .floating-popover.is-positioned { visibility: visible; transition: width var(--sketch-transition-expand), height var(--sketch-transition-expand), padding var(--sketch-transition-expand), transform var(--sketch-transition-expand); }

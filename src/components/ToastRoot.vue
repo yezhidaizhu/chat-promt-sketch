@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from "vue";
+import { computed, inject } from "vue";
 import { CircleAlert, CircleCheck, Info, X } from "@lucide/vue";
 import { dismissToast, toastState } from "../composables/useToast.js";
 import { locale } from "../locales/index.js";
@@ -7,12 +7,13 @@ import { locale } from "../locales/index.js";
 const copy = locale.sketch;
 const icons = { error: CircleAlert, success: CircleCheck, info: Info };
 const icon = computed(() => icons[toastState.value?.type] || Info);
+const teleportTarget = inject("TeleportTarget", "body");
 </script>
 
 <template>
-  <Teleport to="body">
+  <Teleport :to="teleportTarget">
     <Transition name="toast">
-      <div v-if="toastState" :key="toastState.id" class="toast" :class="`is-${toastState.type}`" :role="toastState.type === 'error' ? 'alert' : 'status'">
+      <div v-if="toastState" :key="toastState.id" class="toast chat-sketch-canvas-toast" :class="`is-${toastState.type}`" :role="toastState.type === 'error' ? 'alert' : 'status'">
         <component :is="icon" class="toast__icon" :size="17" aria-hidden="true" />
         <span>{{ toastState.message }}</span>
         <button type="button" :title="copy.labels.dismiss" :aria-label="copy.labels.dismiss" @click="dismissToast"><X :size="15" aria-hidden="true" /></button>

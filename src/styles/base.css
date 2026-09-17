@@ -1,36 +1,35 @@
-* {
-  box-sizing: border-box;
-}
-
-html,
-body,
-#app {
-  min-width: 320px;
-  min-height: 100%;
-  margin: 0;
-}
-
-body {
-  min-height: 100dvh;
-  background: var(--app-color-bg);
-  color: var(--app-color-text);
+.chat-sketch-canvas,
+.chat-sketch-canvas-popover,
+.chat-sketch-canvas-toast,
+.chat-sketch-canvas-tooltip {
   font-family: var(--font-ui);
 }
 
-button,
-input {
+.chat-sketch-canvas *,
+.chat-sketch-canvas *::before,
+.chat-sketch-canvas *::after,
+.chat-sketch-canvas-popover *,
+.chat-sketch-canvas-popover *::before,
+.chat-sketch-canvas-popover *::after,
+.chat-sketch-canvas-toast *,
+.chat-sketch-canvas-toast *::before,
+.chat-sketch-canvas-toast *::after,
+.chat-sketch-canvas-tooltip *,
+.chat-sketch-canvas-tooltip *::before,
+.chat-sketch-canvas-tooltip *::after {
+  box-sizing: border-box;
+}
+
+.chat-sketch-canvas button,
+.chat-sketch-canvas input {
   font: inherit;
 }
 
-button {
+.chat-sketch-canvas button {
   touch-action: manipulation;
 }
 
-body:has(.sketch-dialog[open]) {
-  overflow: hidden;
-}
-
-.sr-only {
+.chat-sketch-canvas .sr-only {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -43,9 +42,18 @@ body:has(.sketch-dialog[open]) {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  .chat-sketch-canvas *,
+  .chat-sketch-canvas *::before,
+  .chat-sketch-canvas *::after,
+  .chat-sketch-canvas-popover *,
+  .chat-sketch-canvas-popover *::before,
+  .chat-sketch-canvas-popover *::after,
+  .chat-sketch-canvas-toast *,
+  .chat-sketch-canvas-toast *::before,
+  .chat-sketch-canvas-toast *::after,
+  .chat-sketch-canvas-tooltip *,
+  .chat-sketch-canvas-tooltip *::before,
+  .chat-sketch-canvas-tooltip *::after {
     scroll-behavior: auto !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;

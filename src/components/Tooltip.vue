@@ -1,6 +1,6 @@
 <script setup>
 // 暂不使用。当前保留浏览器原生 title 提示，后续不要引入此组件。
-import { computed, nextTick, onBeforeUnmount, ref } from "vue";
+import { computed, inject, nextTick, onBeforeUnmount, ref } from "vue";
 
 const props = defineProps({
   label: { type: String, required: true },
@@ -12,6 +12,7 @@ const trigger = ref(null);
 const tooltip = ref(null);
 const visible = ref(false);
 const position = ref({ left: 0, top: 0, side: "top" });
+const teleportTarget = inject("TeleportTarget", "body");
 let timer;
 let frame;
 
@@ -67,8 +68,8 @@ onBeforeUnmount(() => {
   <span ref="trigger" class="tooltip-trigger" @pointerenter="show()" @pointerleave="hide" @focusin="show(0)" @focusout="hide">
     <slot />
   </span>
-  <Teleport to="body">
-    <span v-if="visible" ref="tooltip" class="tooltip" :class="`is-${position.side}`" :style="tooltipStyle" role="tooltip">{{ label }}</span>
+  <Teleport :to="teleportTarget">
+    <span v-if="visible" ref="tooltip" class="tooltip chat-sketch-canvas-tooltip" :class="`is-${position.side}`" :style="tooltipStyle" role="tooltip">{{ label }}</span>
   </Teleport>
 </template>
 

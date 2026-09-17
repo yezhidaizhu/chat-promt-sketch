@@ -17,9 +17,6 @@ importers:
       perfect-freehand:
         specifier: 1.2.3
         version: 1.2.3
-      vue:
-        specifier: 3.5.42
-        version: 3.5.42
       vue-konva:
         specifier: 4.0.1
         version: 4.0.1(konva@10.5.0)(vue@3.5.42)
@@ -30,6 +27,9 @@ importers:
       vite:
         specifier: 8.3.0
         version: 8.3.0
+      vue:
+        specifier: 3.5.42
+        version: 3.5.42
 
 packages:
 

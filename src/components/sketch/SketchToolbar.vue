@@ -28,6 +28,7 @@ defineProps({
   zoomPercent: { type: Number, required: true },
   activePopover: String,
   imageLoading: Boolean,
+  embedded: Boolean,
 });
 
 const emit = defineEmits([
@@ -71,8 +72,8 @@ const toolLabels = copy.tools;
 </script>
 
 <template>
-  <header class="editor-header" :class="{ 'is-outside': controlsOutside }">
-    <button class="icon-button close-button" type="button" :title="copy.labels.close" :aria-label="copy.labels.closeDialog" @click="emit('close')">
+  <header class="editor-header" :class="{ 'is-outside': controlsOutside, 'is-embedded': embedded }">
+    <button v-if="!embedded" class="icon-button close-button" type="button" :title="copy.labels.close" :aria-label="copy.labels.closeDialog" @click="emit('close')">
       <X :size="21" aria-hidden="true" />
     </button>
 
@@ -406,5 +407,23 @@ const toolLabels = copy.tools;
     width: 28px;
     height: 28px;
   }
+}
+
+.editor-header.is-embedded {
+  right: var(--sketch-space-2);
+  left: var(--sketch-space-2);
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--sketch-space-2);
+}
+
+.editor-header.is-embedded .tool-group {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+}
+
+.editor-header.is-embedded .action-group {
+  grid-column: 2;
+  grid-row: 1;
 }
 </style>

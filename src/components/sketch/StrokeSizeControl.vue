@@ -118,6 +118,14 @@ function onKeydown(event) {
   transition: left var(--sketch-transition-expand), background-color var(--sketch-transition-fast), box-shadow var(--sketch-transition-fast);
 }
 
+.brush-controls.is-outside {
+  left: calc(-1 * (48px + var(--sketch-space-3)));
+  padding: 8px 0;
+  border-radius: var(--sketch-radius-md);
+  background: var(--sketch-color-control);
+  box-shadow: var(--sketch-shadow-popover);
+}
+
 .size-control {
   position: relative;
   width: 48px;

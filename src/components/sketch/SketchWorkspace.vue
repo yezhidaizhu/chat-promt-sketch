@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import ColorPalette from "./ColorPalette.vue";
 import ObjectContextMenu from "./ObjectContextMenu.vue";
 import OutputActions from "./OutputActions.vue";
@@ -26,9 +26,23 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  submit: {
+    type: Function,
+    default: null,
+  },
+  embedded: Boolean,
+  initialLayout: {
+    type: String,
+    default: "ratio",
+  },
+  layout: {
+    type: String,
+    default: null,
+  },
 });
 
-const emit = defineEmits(["update:modelValue", "download"]);
+const emit = defineEmits(["update:modelValue", "update:layout", "download"]);
+const teleportTarget = inject("TeleportTarget", "body");
 
 const dialog = ref(null);
 const textInput = ref(null);
@@ -45,12 +59,24 @@ const pointerCursor = ref({ x: 0, y: 0, visible: false });
 const statusMessage = ref("");
 const viewport = ref({ width: window.innerWidth, height: window.innerHeight });
 const copySucceeded = ref(false);
+const attaching = ref(false);
 const backgroundPreviewColor = ref(null);
 const drawingRatio = ref(1);
-const interfaceFullscreen = ref(false);
+const localLayout = ref(props.initialLayout);
+const canvasLayout = computed({
+  get: () => props.layout || localLayout.value,
+  set: (value) => {
+    localLayout.value = value;
+    emit("update:layout", value);
+  },
+});
+const interfaceFullscreen = computed({
+  get: () => canvasLayout.value === "fill",
+  set: (value) => { canvasLayout.value = value ? "fill" : "ratio"; },
+});
 const browserFullscreen = ref(Boolean(document.fullscreenElement));
 const isFullscreen = computed(() => interfaceFullscreen.value || browserFullscreen.value);
-const effectiveControlsOutside = computed(() => controlsOutside.value && !isFullscreen.value);
+const effectiveControlsOutside = computed(() => !props.embedded && controlsOutside.value && !isFullscreen.value);
 const canvasBackgroundColor = computed(() => backgroundPreviewColor.value || backgroundColor.value);
 const { addImageFile, addImageUrl, getImage } = useSketchImageAssets();
 
@@ -79,13 +105,15 @@ const dialogStyle = computed(() => {
   if (interfaceFullscreen.value || !effectiveControlsOutside.value) return style;
 
   const outsideHeight = 104;
+  const outsideWidth = 60;
   const canvasWidth = Math.min(
     760,
-    viewport.value.width - 32,
+    viewport.value.width - 32 - outsideWidth,
     (viewport.value.height - 32 - outsideHeight) * ratioValue.value,
   );
   return {
     ...style,
+    "--sketch-outside-offset-x": `${outsideWidth / 2}px`,
     width: `${canvasWidth}px`,
   };
 });
@@ -792,6 +820,33 @@ function downloadCanvas() {
   announce(copy.messages.imageDownloaded);
 }
 
+async function attachCanvas() {
+  if (!hasContent.value || !props.submit || attaching.value) return;
+  const output = createOutputCanvas();
+  if (!output) return;
+  const blob = await new Promise((resolve) => output.toBlob(resolve, "image/png"));
+  if (!blob) {
+    announce("Unable to generate PNG");
+    return;
+  }
+
+  attaching.value = true;
+  try {
+    const result = await props.submit({
+      blob,
+      filename: `chat-sketch-${new Date().toISOString().slice(0, 10)}.png`,
+      width: output.width,
+      height: output.height,
+    });
+    announce(result?.message || (result?.ok ? "Sketch attached to chat." : "Sketch attachment failed."));
+    if (result?.ok) closeDialog();
+  } catch {
+    announce("Sketch attachment failed.");
+  } finally {
+    attaching.value = false;
+  }
+}
+
 function closeDialog() {
   closeObjectContextMenu();
   emit("update:modelValue", false);
@@ -926,10 +981,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <Teleport to="body">
-    <div v-show="modelValue" class="sketch-modal" :class="{ 'is-interface-fullscreen': interfaceFullscreen }">
+  <Teleport :to="teleportTarget">
+    <div v-show="modelValue" class="sketch-modal chat-sketch-canvas" :class="{ 'is-interface-fullscreen': interfaceFullscreen, 'is-embedded': embedded }">
       <div class="sketch-backdrop"></div>
-      <div ref="dialog" class="sketch-dialog" :style="dialogStyle" role="dialog" aria-modal="true" aria-labelledby="sketch-dialog-title" tabindex="-1" @pointerdown="closeObjectContextMenu" @keydown="onKeydown" @keyup="onKeyup">
+      <div ref="dialog" class="sketch-dialog" :style="dialogStyle" :role="embedded ? 'main' : 'dialog'" :aria-modal="embedded ? undefined : true" aria-labelledby="sketch-dialog-title" tabindex="-1" @pointerdown="closeObjectContextMenu" @keydown="onKeydown" @keyup="onKeyup">
       <section class="sketch-editor" :class="{ 'is-controls-outside': effectiveControlsOutside }">
           <h2 id="sketch-dialog-title" class="sr-only">{{ copy.labels.dialog }}</h2>
         <div id="sketch-popover-host"></div>
@@ -947,6 +1002,7 @@ onBeforeUnmount(() => {
           :zoom-percent="zoomPercent"
           :active-popover="activePopover"
           :image-loading="imageLoading"
+          :embedded="embedded"
           @close="closeDialog"
           @select-tool="selectTool"
           @toggle-shapes="toggleShapeMenu"
@@ -1032,7 +1088,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <ColorPalette :model-value="strokeColor" :outside="effectiveControlsOutside" @update:model-value="setStrokeColor" />
-        <OutputActions :disabled="!hasContent" :can-copy="hasContent" :copy-succeeded="copySucceeded" :outside="effectiveControlsOutside" @download="downloadCanvas" @copy="copyCanvas" />
+        <OutputActions :disabled="!hasContent" :can-copy="hasContent" :can-attach="Boolean(submit)" :attaching="attaching" :copy-succeeded="copySucceeded" :outside="effectiveControlsOutside" @attach="attachCanvas" @download="downloadCanvas" @copy="copyCanvas" />
         <StrokeSizeControl :model-value="strokeSize" :outside="effectiveControlsOutside" @update:model-value="setStrokeSize" />
         <div class="sr-only" aria-live="polite">{{ statusMessage }}</div>
       </section>
@@ -1072,6 +1128,10 @@ onBeforeUnmount(() => {
   border-radius: 0;
   box-shadow: none;
   transform: none;
+}
+
+.sketch-modal.is-embedded .sketch-backdrop {
+  display: none;
 }
 
 .sketch-dialog {
