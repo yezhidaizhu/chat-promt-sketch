@@ -8,16 +8,14 @@ const copy = locale.sketch;
 
 export function useSketchImageImport({
   stage,
-  stageSize,
+  documentSize,
   commands,
   activeTool,
-  selectedIndex,
-  selectionCursor,
+  selectedId,
   clone,
   pushHistory,
   announce,
-  normalizePoint,
-  eventPoint,
+  documentPoint,
   setPanMode,
 }) {
   const imageInput = ref(null);
@@ -43,29 +41,29 @@ export function useSketchImageImport({
     announce(copy.messages.imageLoading);
     try {
       const asset = typeof source === "string" ? await addImageUrl(source) : await addImageFile(source);
-      const maxWidth = stageSize.value.width * 0.6;
-      const maxHeight = stageSize.value.height * 0.6;
+      const maxWidth = documentSize.value.width * 0.6;
+      const maxHeight = documentSize.value.height * 0.6;
       const scale = Math.min(1, maxWidth / asset.width, maxHeight / asset.height);
       const width = Math.max(1, asset.width * scale);
       const height = Math.max(1, asset.height * scale);
-      const x = dropPoint ? Math.min(stageSize.value.width - width, Math.max(0, dropPoint.x - width / 2)) : (stageSize.value.width - width) / 2;
-      const y = dropPoint ? Math.min(stageSize.value.height - height, Math.max(0, dropPoint.y - height / 2)) : (stageSize.value.height - height) / 2;
-      const start = normalizePoint({ x, y });
-      const end = normalizePoint({ x: x + width, y: y + height });
+      const x = dropPoint ? Math.min(documentSize.value.width - width, Math.max(0, dropPoint.x - width / 2)) : (documentSize.value.width - width) / 2;
+      const y = dropPoint ? Math.min(documentSize.value.height - height, Math.max(0, dropPoint.y - height / 2)) : (documentSize.value.height - height) / 2;
       const previous = clone();
+      const id = crypto.randomUUID?.() || `sketch-image-${Date.now()}`;
       commands.value.push({
+        id,
         type: "image",
         assetId: asset.id,
-        x: start.x,
-        y: start.y,
-        width: end.x - start.x,
-        height: end.y - start.y,
-        worldSize: true,
+        x,
+        y,
+        rotation: 0,
+        width,
+        height,
+        masks: [],
       });
       setPanMode(false);
       activeTool.value = "select";
-      selectedIndex.value = commands.value.length - 1;
-      selectionCursor.value = "grab";
+      selectedId.value = id;
       pushHistory(previous);
       stage.value?.focus();
       announce(copy.messages.imageAdded);
@@ -119,7 +117,7 @@ export function useSketchImageImport({
     }
     if (!source) return;
     closePopover();
-    await insertImage(source, eventPoint(event));
+    await insertImage(source, documentPoint(event));
   }
 
   return {

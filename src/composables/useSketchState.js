@@ -7,11 +7,10 @@ export function useSketchState() {
   const activeShape = ref("rectangle");
   const { strokeColor, strokeSize, controlsOutside, canvasRatio, backgroundColor } = useSketchPreferences();
   const commands = ref([]);
-  const selectedIndex = ref(-1);
+  const selectedId = ref(null);
   const textEditor = ref(null);
   const textValue = ref("");
-  const selectionCursor = ref("default");
-  const selectedCommand = computed(() => commands.value[selectedIndex.value] || null);
+  const selectedCommand = computed(() => commands.value.find((command) => command.id === selectedId.value) || null);
   const hasContent = computed(() => commands.value.length > 0);
-  return { activeTool, activeShape, strokeColor, strokeSize, backgroundColor, commands, selectedIndex, activePopover, popoverAnchor, controlsOutside, canvasRatio, textEditor, textValue, selectionCursor, selectedCommand, hasContent };
+  return { activeTool, activeShape, strokeColor, strokeSize, backgroundColor, commands, selectedId, activePopover, popoverAnchor, controlsOutside, canvasRatio, textEditor, textValue, selectedCommand, hasContent };
 }

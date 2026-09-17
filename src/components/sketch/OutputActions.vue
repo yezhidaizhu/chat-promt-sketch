@@ -27,7 +27,7 @@ const expanded = ref(false);
         <button class="output-button" type="button" :title="copy.labels.downloadPng" :aria-label="copy.labels.downloadPng" :disabled="disabled" @click="emit('download')"><Download :size="19" aria-hidden="true" /></button>
       </div>
       <button v-if="canAttach" class="output-button" type="button" :title="copy.labels.attachToChat" :aria-label="copy.labels.attachToChat" :disabled="disabled || attaching" @click="emit('attach')"><Send :size="18" aria-hidden="true" /></button>
-      <button v-else class="output-button" type="button" :title="copy.labels.downloadPng" :aria-label="copy.labels.downloadPng" :disabled="disabled" @click="emit('download')"><Download :size="19" aria-hidden="true" /></button>
+      <button v-else-if="!expanded" class="output-button" type="button" :title="copy.labels.downloadPng" :aria-label="copy.labels.downloadPng" :disabled="disabled" @click="emit('download')"><Download :size="19" aria-hidden="true" /></button>
     </SketchControlPill>
     <button class="output-toggle" type="button" :title="expanded ? copy.labels.collapseOutputActions : copy.labels.expandOutputActions" :aria-label="expanded ? copy.labels.collapseOutputActions : copy.labels.expandOutputActions" :aria-expanded="expanded" @click="expanded = !expanded"><ChevronsDown v-if="expanded" :size="18" aria-hidden="true" /><ChevronsUp v-else :size="18" aria-hidden="true" /></button>
   </div>

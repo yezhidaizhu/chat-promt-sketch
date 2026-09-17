@@ -1,5 +1,6 @@
 <script setup>
-import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { getStroke } from "perfect-freehand";
 import ColorPalette from "./ColorPalette.vue";
 import ObjectContextMenu from "./ObjectContextMenu.vue";
 import OutputActions from "./OutputActions.vue";
@@ -7,1033 +8,237 @@ import SketchToolbar from "./SketchToolbar.vue";
 import StrokeSizeControl from "./StrokeSizeControl.vue";
 import StrokeSizePreview from "./StrokeSizePreview.vue";
 import SketchTextEditor from "./SketchTextEditor.vue";
+import ImageDropOverlay from "./ImageDropOverlay.vue";
 import { useHistory } from "../../composables/useHistory.js";
 import { useSketchState } from "../../composables/useSketchState.js";
 import { useSketchControls } from "../../composables/useSketchControls.js";
-import { useSketchPointer } from "../../composables/useSketchPointer.js";
-import { useSketchSelection } from "../../composables/useSketchSelection.js";
-import { useSketchTextEditor } from "../../composables/useSketchTextEditor.js";
-import { useSketchKonvaCanvas } from "../../composables/useSketchKonvaCanvas.js";
 import { useSketchImageImport } from "../../composables/useSketchImageImport.js";
 import { useSketchOutput } from "../../composables/useSketchOutput.js";
 import { useSketchDialogLayout } from "../../composables/useSketchDialogLayout.js";
 import { closePopover, openPopover } from "../../composables/usePopover.js";
-import { isSelectionFrameHit as hitSelectionFrame, resizeCursor as getResizeCursor } from "../../utils/hitTest.js";
-import { drawFreehand, drawShape } from "../../utils/sketchDrawing.js";
-import { createSketchCamera } from "../../utils/sketchCamera.js";
 import { locale } from "../../locales/index.js";
 
-const props = defineProps({
-  modelValue: {
-    type: Boolean,
-    default: false,
-  },
-  submit: {
-    type: Function,
-    default: null,
-  },
-  embedded: Boolean,
-  initialLayout: {
-    type: String,
-    default: "ratio",
-  },
-  layout: {
-    type: String,
-    default: null,
-  },
-});
-
+const props = defineProps({ modelValue: Boolean, submit: { type: Function, default: null }, embedded: Boolean, initialLayout: { type: String, default: "ratio" }, layout: { type: String, default: null } });
 const emit = defineEmits(["update:modelValue", "update:layout", "download"]);
-const teleportTarget = inject("TeleportTarget", "body");
-
-const dialog = ref(null);
-const textInput = ref(null);
-const objectContextMenu = ref(null);
-const {
-  activeTool, activeShape, strokeColor, strokeSize, backgroundColor, commands, selectedIndex,
-  activePopover, controlsOutside, canvasRatio, textEditor,
-  textValue, selectionCursor, selectedCommand, hasContent,
-} = useSketchState();
-const pointerCursor = ref({ x: 0, y: 0, visible: false });
-const statusMessage = ref("");
-const strokeSizePreviewVisible = ref(false);
-const backgroundPreviewColor = ref(null);
-const canvasBackgroundColor = computed(() => backgroundPreviewColor.value || backgroundColor.value);
-
-let textTransform = null;
-let commandId = 0;
-
-const textEditorPadding = 6;
-const textEditorMinWidth = 48;
-const textEditorDefaultWidth = 240;
-const textLineHeight = 1.25;
-const textMinSize = 12;
-const textMaxSize = 160;
-
 const copy = locale.sketch;
-const toolLabels = copy.tools;
-let selectionApi;
-const {
-  container: stage,
-  stage: konvaStage,
-  backgroundLayer,
-  backgroundRect,
-  contentLayer,
-  overlayLayer,
-  stageSize,
-  zoom,
-  pan,
-  panMode,
-  spacePressed,
-  isPanning,
-  minZoom,
-  maxZoom,
-  zoomPercent,
-  stageConfig,
-  backgroundConfig,
-  measurementContext,
-  drawContentScene,
-  drawOverlayScene,
-  render,
-  renderLive,
-  renderEraserPreview,
-  resizeCanvases,
-  eventPoint,
-  zoomBy,
-  resetView,
-  handleWheel,
-  setPanMode,
-  setSpacePressed,
-  startPan,
-  movePan,
-  finishPan,
-  cancelPan,
-  createOutputCanvas,
-} = useSketchKonvaCanvas({
-  commands,
-  backgroundColor: canvasBackgroundColor,
-  isTextEditing: () => Boolean(textEditor.value),
-  beforeRender: migrateLegacyCommands,
-  drawCommand,
-  drawSelection: (context) => selectionApi?.drawSelection(context),
-});
-const {
-  drawingRatio,
-  ratioValue,
-  dialogStyle,
-  interfaceFullscreen,
-  browserFullscreen,
-  isFullscreen,
-  effectiveControlsOutside,
-  changeCanvasRatio,
-  toggleBrowserFullscreen,
-} = useSketchDialogLayout({
-  dialog,
-  stage,
-  controlsOutside,
-  canvasRatio,
-  commands,
-  initialLayout: props.initialLayout,
-  getLayout: () => props.layout,
-  getEmbedded: () => props.embedded,
-  getModelValue: () => props.modelValue,
-  emitLayout: (value) => emit("update:layout", value),
-  resizeCanvases,
-  announce,
-});
-const camera = computed(() => createSketchCamera({
-  width: stageSize.value.width,
-  height: stageSize.value.height,
-  worldAspect: drawingRatio.value,
-  zoom: zoom.value,
-  pan: pan.value,
-}));
-
-const canvasCursor = computed(() => {
-  if (isPanning.value) return "grabbing";
-  if (panMode.value || spacePressed.value) return "grab";
-  if (activeTool.value === "select") return selectedIndex.value >= 0 ? selectionCursor.value : "default";
-  if (activeTool.value === "text") return "text";
-  if (activeTool.value === "shape") return "crosshair";
-  return pointerCursor.value.visible ? "none" : "default";
-});
-const pointerCursorStyle = computed(() => ({
-  width: `${Math.max(strokeSize.value, 6)}px`,
-  height: `${Math.max(strokeSize.value, 6)}px`,
-  backgroundColor: activeTool.value === "eraser" ? "#a8a8a8" : strokeColor.value,
-  left: `${pointerCursor.value.x}px`,
-  top: `${pointerCursor.value.y}px`,
-  opacity: pointerCursor.value.visible && !panMode.value && !spacePressed.value && !isPanning.value && ["pen", "eraser"].includes(activeTool.value) ? 1 : 0,
-}));
-const textEditorStyle = computed(() => {
-  if (!textEditor.value) return {};
-  const command = commands.value[textEditor.value.index];
-  if (!command) return {};
-  const bounds = textEditorBounds(command);
+const teleportTarget = inject("TeleportTarget", "body");
+const dialog = ref(null), stageContainer = ref(null), konvaStage = ref(null), documentGroup = ref(null), transformer = ref(null), textInput = ref(null);
+const stageSize = ref({ width: 1, height: 1 }), zoom = ref(1), pan = ref({ x: 0, y: 0 }), panMode = ref(false), spacePressed = ref(false), isPanning = ref(false);
+const draft = ref(null), eraserPreview = ref(null), textEditor = ref(null), textValue = ref(""), objectContextMenu = ref(null), statusMessage = ref(""), strokeSizePreviewVisible = ref(false), backgroundPreviewColor = ref(null), pointerCursor = ref({ x: 0, y: 0, visible: false }), selectionCursor = ref("default");
+const nodes = new Map();
+let gesture, transformPrevious, observer, sequence = 0;
+const { activeTool, activeShape, strokeColor, strokeSize, backgroundColor, commands, selectedId, activePopover, controlsOutside, canvasRatio, selectedCommand, hasContent } = useSketchState();
+const background = computed(() => backgroundPreviewColor.value || backgroundColor.value);
+const minZoom = .25, maxZoom = 4;
+const textEditorPadding = 6;
+const zoomPercent = computed(() => Math.round(zoom.value * 100));
+const selectionOrder = computed(() => commands.value.findIndex((item) => item.id === selectedId.value));
+const canMoveBackward = computed(() => selectionOrder.value > 0), canMoveForward = computed(() => selectionOrder.value >= 0 && selectionOrder.value < commands.value.length - 1);
+const { drawingRatio, ratioValue, dialogStyle, interfaceFullscreen, browserFullscreen, isFullscreen, effectiveControlsOutside, changeCanvasRatio, toggleBrowserFullscreen } = useSketchDialogLayout({ dialog, stage: stageContainer, controlsOutside, canvasRatio, commands, initialLayout: props.initialLayout, getLayout: () => props.layout, getEmbedded: () => props.embedded, getModelValue: () => props.modelValue, emitLayout: (value) => emit("update:layout", value), resizeCanvases, announce });
+const documentSize = computed(() => ({ width: 1000 * drawingRatio.value, height: 1000 }));
+const documentTransform = computed(() => { const fit = Math.min(Math.max(1, stageSize.value.width - 96) / documentSize.value.width, Math.max(1, stageSize.value.height - 96) / 1000); const scale = fit * zoom.value; return { x: (stageSize.value.width - documentSize.value.width * scale) / 2 + pan.value.x, y: (stageSize.value.height - 1000 * scale) / 2 + pan.value.y, scale }; });
+const stageConfig = computed(() => ({ ...stageSize.value }));
+const documentConfig = computed(() => ({ x: documentTransform.value.x, y: documentTransform.value.y, scaleX: documentTransform.value.scale, scaleY: documentTransform.value.scale }));
+const transformerConfig = computed(() => {
+  const inverse = 1 / Math.max(.001, documentTransform.value.scale);
+  const baseSize = 6 * inverse;
+  const padding = 2 * inverse;
   return {
-    left: `${bounds.x}px`,
-    top: `${bounds.y}px`,
-    width: `${bounds.width}px`,
-    height: `${bounds.height}px`,
-    color: command.color,
-    fontSize: `${displaySize(command)}px`,
-    lineHeight: textLineHeight,
+    enabledAnchors: ["top-left", "top-center", "top-right", "middle-right", "bottom-right", "bottom-center", "bottom-left", "middle-left"],
+    borderStroke: "#a3e635",
+    borderStrokeWidth: 1 * inverse,
+    anchorFill: "#fff",
+    anchorStrokeWidth: 0,
+    anchorSize: baseSize,
+    anchorCornerRadius: baseSize / 2,
+    rotateAnchorAngle: 180,
+    rotateAnchorOffset: 24 * inverse,
+    rotateLineVisible: true,
+    flipEnabled: false,
+    keepRatio: true,
+    shiftBehavior: "default",
+    rotationSnaps: [0, 45, 90, 135, 180, 225, 270, 315],
+    rotationSnapTolerance: 5,
+    padding,
+    anchorStyleFunc: (anchor) => {
+      anchor.fill("#fff");
+      anchor.strokeWidth(0);
+      if (anchor.hasName("rotater")) {
+        anchor.width(14 * inverse);
+        anchor.height(14 * inverse);
+        anchor.cornerRadius(7 * inverse);
+        anchor.offsetX(7 * inverse);
+        anchor.offsetY(7 * inverse);
+        anchor.rotation(-anchor.getParent().rotation());
+        anchor.sceneFunc((context, shape) => {
+          const canvas = context._context;
+          const center = 7 * inverse;
+          canvas.save();
+          canvas.beginPath();
+          canvas.arc(center, center, center, 0, Math.PI * 2);
+          canvas.fillStyle = "#fff";
+          canvas.fill();
+          canvas.strokeStyle = "#171717";
+          canvas.lineWidth = 2;
+          canvas.lineCap = "round";
+          canvas.lineJoin = "round";
+          canvas.translate(1.9 * inverse, 1.9 * inverse);
+          canvas.scale(.425 * inverse, .425 * inverse);
+          canvas.stroke(new Path2D("M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"));
+          canvas.stroke(new Path2D("M3 3v5h5"));
+          canvas.restore();
+        });
+        anchor.hitFunc((context, shape) => {
+          context.beginPath();
+          context.arc(7 * inverse, 7 * inverse, 7 * inverse, 0, Math.PI * 2);
+          context.closePath();
+          context.fillStrokeShape(shape);
+        });
+        return;
+      }
+      const horizontal = ["top-center", "bottom-center"].some((name) => anchor.hasName(name));
+      const vertical = ["middle-right", "middle-left"].some((name) => anchor.hasName(name));
+      if (horizontal) {
+        anchor.width(7 * inverse);
+        anchor.height(3 * inverse);
+        anchor.cornerRadius(1.5 * inverse);
+      } else if (vertical) {
+        anchor.width(3 * inverse);
+        anchor.height(7 * inverse);
+        anchor.cornerRadius(1.5 * inverse);
+      } else {
+        anchor.width(baseSize);
+        anchor.height(baseSize);
+        anchor.cornerRadius(baseSize / 2);
+      }
+      let offsetX = anchor.width() / 2;
+      let offsetY = anchor.height() / 2;
+      if (["top-left", "middle-left", "bottom-left"].some((name) => anchor.hasName(name))) offsetX += padding;
+      if (["top-right", "middle-right", "bottom-right"].some((name) => anchor.hasName(name))) offsetX -= padding;
+      if (["top-left", "top-center", "top-right"].some((name) => anchor.hasName(name))) offsetY += padding;
+      if (["bottom-left", "bottom-center", "bottom-right"].some((name) => anchor.hasName(name))) offsetY -= padding;
+      anchor.offsetX(offsetX);
+      anchor.offsetY(offsetY);
+    },
+    boundBoxFunc: (oldBox, box) => Math.abs(box.width) < 12 * inverse || Math.abs(box.height) < 12 * inverse ? oldBox : box,
+  };
+});
+const canvasCursor = computed(() => isPanning.value ? "grabbing" : panMode.value || spacePressed.value ? "grab" : activeTool.value === "select" ? selectionCursor.value : activeTool.value === "text" ? "text" : activeTool.value === "shape" ? "crosshair" : pointerCursor.value.visible && ["pen", "eraser"].includes(activeTool.value) ? "none" : "default");
+const pointerCursorStyle = computed(() => ({ width: `${Math.max(6, strokeSize.value)}px`, height: `${Math.max(6, strokeSize.value)}px`, left: `${pointerCursor.value.x}px`, top: `${pointerCursor.value.y}px`, backgroundColor: activeTool.value === "eraser" ? "#a8a8a8" : strokeColor.value, opacity: pointerCursor.value.visible && ["pen", "eraser"].includes(activeTool.value) && !isPanning.value && !panMode.value ? 1 : 0 }));
+const menuStyle = computed(() => objectContextMenu.value ? { left: `${Math.max(8, Math.min(stageSize.value.width - 176, objectContextMenu.value.x))}px`, top: `${Math.max(8, Math.min(stageSize.value.height - 154, objectContextMenu.value.y))}px` } : {});
+const textEditorStyle = computed(() => {
+  const item = selectedCommand.value;
+  if (!item || textEditor.value?.id !== item.id) return {};
+  const node = objectNode(item.id)?.findOne(".sketch-text");
+  const scale = documentTransform.value.scale;
+  const lineCount = Math.max(1, textValue.value.split("\n").length);
+  const height = Math.max(node?.height() || 0, item.fontSize * 1.25 * lineCount);
+  const angle = (item.rotation || 0) * Math.PI / 180;
+  const offsetX = (-textEditorPadding * Math.cos(angle) + textEditorPadding * Math.sin(angle)) * scale;
+  const offsetY = (-textEditorPadding * Math.sin(angle) - textEditorPadding * Math.cos(angle)) * scale;
+  return {
+    left: `${documentTransform.value.x + item.x * scale + offsetX}px`,
+    top: `${documentTransform.value.y + item.y * scale + offsetY}px`,
+    width: `${item.width}px`,
+    height: `${height}px`,
+    color: item.color,
+    fontSize: `${item.fontSize}px`,
+    lineHeight: 1.25,
+    transformOrigin: "0 0",
+    transform: `rotate(${item.rotation || 0}deg) scale(${scale})`,
   };
 });
 
-const { undoStack, redoStack, canUndo, canRedo, clone, pushHistory, undo, redo } = useHistory(
-  () => commands.value,
-  (restored, message, context) => {
-    closeObjectContextMenu();
-    commands.value = restored;
-    if (context?.backgroundColor) backgroundColor.value = context.backgroundColor;
-    selectedIndex.value = -1;
-    selectionCursor.value = "default";
-    render();
-    announce(message);
-  },
-  () => render(),
-  () => ({ backgroundColor: backgroundColor.value }),
-  { undo: copy.messages.undone, redo: copy.messages.redone },
-);
-const {
-  imageInput,
-  imageLoading,
-  imageDragActive,
-  getImage,
-  openImagePicker,
-  addImage,
-  handleImageDragEnter,
-  handleImageDragOver,
-  handleImageDragLeave,
-  handleImageDrop,
-} = useSketchImageImport({
-  stage,
-  stageSize,
-  commands,
-  activeTool,
-  selectedIndex,
-  selectionCursor,
-  clone,
-  pushHistory,
-  announce,
-  normalizePoint,
-  eventPoint,
-  setPanMode,
-});
-const { copySucceeded, attaching, copyCanvas, downloadCanvas, attachCanvas } = useSketchOutput({
-  hasContent,
-  createOutputCanvas,
-  getSubmit: () => props.submit,
-  emitDownload: (filename) => emit("download", filename),
-  announce,
-  close: closeDialog,
-});
-let controls;
-const displaySize = (command) => command.worldSize ? camera.value.toScreenDistance(command.size) : command.size;
-const { textLayout, textEditorBounds, startText, beginTextEdit, commitText, cancelText, resizeTextCommand, startTextTransform, moveTextTransform, finishTextTransform } = useSketchTextEditor({ commands, selectedIndex, activeTool, strokeColor, selectionCursor, textEditor, textValue, clone, pushHistory, announce, render, selectCommand: (...args) => controls.selectCommand(...args), normalizePoint, pixelPoint, eventPoint, getStageSize: () => stageSize.value, getContext: () => measurementContext, input: textInput, getCamera: () => camera.value, displaySize, transformMasks: transformCommandMasks });
-controls = useSketchControls({ state: { activeTool, activeShape, strokeColor, strokeSize, commands, selectedIndex, activePopover, controlsOutside, canvasRatio, textEditor, selectionCursor, selectedCommand }, clone, pushHistory, render, resizeCanvases, announce, commitText, onRatioChange: changeCanvasRatio, getCurrentRatio: () => interfaceFullscreen.value ? "fill" : canvasRatio.value, getViewScale: () => camera.value.scale });
-const { selectTool: selectDrawingTool, toggleShapeMenu: openShapeMenu, toggleControlsOutside, toggleRatioMenu, selectShape, selectCommand, setStrokeSize, setStrokeColor } = controls;
+const { canUndo, canRedo, clone, pushHistory, undo, redo } = useHistory(() => commands.value, (restored, message, context) => { commands.value = restored; if (context?.backgroundColor) backgroundColor.value = context.backgroundColor; selectedId.value = null; refresh(); announce(message); }, refresh, () => ({ backgroundColor: backgroundColor.value }), { undo: copy.messages.undone, redo: copy.messages.redone });
+const controls = useSketchControls({ state: { activeTool, activeShape, strokeColor, strokeSize, commands, selectedId, activePopover, controlsOutside, canvasRatio, textEditor, selectedCommand }, clone, pushHistory, render: refresh, resizeCanvases, announce, commitText, onRatioChange: changeCanvasRatio, getCurrentRatio: () => interfaceFullscreen.value ? "fill" : canvasRatio.value, getDocumentScale: () => documentTransform.value.scale });
+const { imageInput, imageLoading, imageDragActive, getImage, openImagePicker, addImage, handleImageDragEnter, handleImageDragOver, handleImageDragLeave, handleImageDrop } = useSketchImageImport({ stage: stageContainer, documentSize, commands, activeTool, selectedId, clone, pushHistory, announce, documentPoint: pointFromNative, setPanMode });
+const { copySucceeded, attaching, copyCanvas, downloadCanvas, attachCanvas } = useSketchOutput({ hasContent, createOutputCanvas, getSubmit: () => props.submit, emitDownload: (name) => emit("download", name), announce, close: closeDialog });
 
-async function toggleCanvasControls() {
-  if (props.embedded && interfaceFullscreen.value) {
-    interfaceFullscreen.value = false;
-    await nextTick();
-  }
-  toggleControlsOutside();
-}
-
-function showStrokeSizePreview() {
-  strokeSizePreviewVisible.value = true;
-}
-
-function hideStrokeSizePreview() {
-  strokeSizePreviewVisible.value = false;
-}
-selectionApi = useSketchSelection({ commands, selectedIndex, pixelPoint, textLayout, displaySize });
-const { commandBounds, geometryBounds, selectionBounds, findResizeHandle, resizeBounds, findCommand } = selectionApi;
-const canMoveBackward = computed(() => selectedIndex.value > 0);
-const canMoveForward = computed(() => selectedIndex.value >= 0 && selectedIndex.value < commands.value.length - 1);
-const objectContextMenuStyle = computed(() => {
-  if (!objectContextMenu.value) return {};
-  const width = 168;
-  const height = 146;
-  const gap = 8;
-  const left = Math.min(stageSize.value.width - width - gap, Math.max(gap, objectContextMenu.value.x));
-  const top = Math.min(stageSize.value.height - height - gap, Math.max(gap, objectContextMenu.value.y));
-  return { left: `${left}px`, top: `${top}px` };
-});
-
-function announce(message) {
-  statusMessage.value = "";
-  requestAnimationFrame(() => {
-    statusMessage.value = message;
-  });
-}
-
-function normalizePoint(point) {
-  return camera.value.toWorld(point);
-}
-
-function pixelPoint(point) {
-  return camera.value.toScreen(point);
-}
-
-function createCommandId() {
-  return crypto.randomUUID?.() || `sketch-object-${Date.now()}-${commandId += 1}`;
-}
-
-function migrateCommandGeometry(command, activeCamera) {
-  if (command.worldSize) return;
-  const toWorld = (point) => activeCamera.toWorld({ x: point.x * stageSize.value.width, y: point.y * stageSize.value.height, pressure: point.pressure });
-  if (["text", "image"].includes(command.type)) {
-    const point = toWorld(command);
-    command.x = point.x;
-    command.y = point.y;
-    command.width = activeCamera.toWorldXDistance((command.width || 0) * stageSize.value.width);
-    if (command.type === "image") command.height = activeCamera.toWorldDistance((command.height || 0) * stageSize.value.height);
-  } else if (command.type === "shape") {
-    command.start = toWorld(command.start);
-    command.end = toWorld(command.end);
-  } else {
-    command.points = command.points.map(toWorld);
-  }
-  if (command.size != null) command.size = activeCamera.toWorldDistance(command.size);
-  command.worldSize = true;
-}
-
-function migrateLegacyCommands() {
-  const activeCamera = camera.value;
-  const selected = commands.value[selectedIndex.value];
-  const objects = [];
-  let hasLegacyErasers = false;
-  commands.value.forEach((command) => {
-    migrateCommandGeometry(command, activeCamera);
-    if (command.type === "eraser") {
-      objects.forEach((object) => object.masks.push(JSON.parse(JSON.stringify(command))));
-      hasLegacyErasers = true;
-      return;
-    }
-    command.id ||= createCommandId();
-    command.masks ||= [];
-    command.masks.forEach((mask) => migrateCommandGeometry(mask, activeCamera));
-    objects.push(command);
-  });
-  if (!hasLegacyErasers) return;
-  commands.value = objects;
-  selectedIndex.value = selected ? objects.indexOf(selected) : -1;
-}
-
-function drawCommand(context, command, preview = false) {
-  if (command.type === "image") {
-    const image = getImage(command.assetId);
-    if (!image) return;
-    const start = pixelPoint(command);
-    const end = pixelPoint({ x: command.x + command.width, y: command.y + command.height });
-    context.drawImage(image, start.x, start.y, end.x - start.x, end.y - start.y);
-    return;
-  }
-  const drawable = command.worldSize ? { ...command, size: camera.value.toScreenDistance(command.size) } : command;
-  if (["pen", "eraser"].includes(drawable.type)) {
-    drawFreehand(context, drawable, pixelPoint, preview);
-    return;
-  }
-  if (drawable.type === "shape") {
-    drawShape(context, drawable, pixelPoint);
-    return;
-  }
-  if (command.type === "text") {
-    if (textEditor.value?.index === commands.value.indexOf(command)) return;
-    const point = pixelPoint(command);
-    const layout = textLayout(command);
-    context.save();
-    context.fillStyle = command.color;
-    context.font = `600 ${displaySize(command)}px Inter, sans-serif`;
-    context.textBaseline = "top";
-    layout.lines.forEach((line, index) => {
-      context.fillText(line, point.x, point.y + index * layout.lineHeight, layout.width);
-    });
-    context.restore();
-  }
-}
-
-function translateCommand(command, dx, dy) {
-  if (["text", "image"].includes(command.type)) {
-    command.x += dx;
-    command.y += dy;
-  } else if (command.type === "shape") {
-    command.start.x += dx;
-    command.start.y += dy;
-    command.end.x += dx;
-    command.end.y += dy;
-  } else {
-    command.points.forEach((point) => {
-      point.x += dx;
-      point.y += dy;
-    });
-  }
-  command.masks?.forEach((mask) => mask.points.forEach((point) => {
-    point.x += dx;
-    point.y += dy;
-  }));
-}
-
-function transformCommandMasks(command, originalCommand, originalBounds, nextBounds = selectionBounds(command)) {
-  if (!originalCommand.masks?.length || !originalBounds.width || !originalBounds.height) return;
-  const scaleX = nextBounds.width / originalBounds.width;
-  const scaleY = nextBounds.height / originalBounds.height;
-  const sizeScale = (Math.abs(scaleX) + Math.abs(scaleY)) / 2;
-  command.masks = originalCommand.masks.map((mask) => ({
-    ...mask,
-    size: mask.size * sizeScale,
-    points: mask.points.map((point) => {
-      const pixel = pixelPoint(point);
-      return normalizePoint({
-        x: nextBounds.x + (pixel.x - originalBounds.x) * scaleX,
-        y: nextBounds.y + (pixel.y - originalBounds.y) * scaleY,
-        pressure: point.pressure,
-      });
-    }),
-  }));
-}
-
-function applyEraser(command) {
-  if (!command?.points.length || !commands.value.length) return false;
-  const eraserBounds = commandBounds(command);
-  let applied = false;
-  commands.value.forEach((object) => {
-    const bounds = selectionBounds(object);
-    const intersects = eraserBounds.x <= bounds.x + bounds.width && eraserBounds.x + eraserBounds.width >= bounds.x && eraserBounds.y <= bounds.y + bounds.height && eraserBounds.y + eraserBounds.height >= bounds.y;
-    if (!intersects) return;
-    object.masks ||= [];
-    object.masks.push(clone(command));
-    applied = true;
-  });
-  return applied;
-}
-
-function resizeCommand(command, point, gestureState, preserveAspect = false) {
-  const handle = gestureState.handle;
-  const normalized = normalizePoint(point);
-
-  if (command.type === "shape" && ["line", "arrow"].includes(command.shape)) {
-    command[handle.id] = normalized;
-    transformCommandMasks(command, gestureState.originalCommand, gestureState.originalSelectionBounds);
-    return;
-  }
-
-  if (command.type === "shape") {
-    const padding = displaySize(command) / 2 + 1;
-    const targetSelection = resizeBounds(gestureState.originalSelectionBounds, handle.id, point, preserveAspect);
-    const left = Math.min(targetSelection.x, targetSelection.x + targetSelection.width) + padding;
-    const right = Math.max(targetSelection.x, targetSelection.x + targetSelection.width) - padding;
-    const top = Math.min(targetSelection.y, targetSelection.y + targetSelection.height) + padding;
-    const bottom = Math.max(targetSelection.y, targetSelection.y + targetSelection.height) - padding;
-    command.start = normalizePoint({ x: left, y: top });
-    command.end = normalizePoint({ x: right, y: bottom });
-    transformCommandMasks(command, gestureState.originalCommand, gestureState.originalSelectionBounds);
-    return;
-  }
-
-  if (command.type === "text") {
-    resizeTextCommand(command, point, gestureState);
-    transformCommandMasks(command, gestureState.originalCommand, gestureState.originalSelectionBounds);
-    return;
-  }
-
-  if (command.type === "image") {
-    const target = resizeBounds(gestureState.originalSelectionBounds, handle.id, point, preserveAspect);
-    const left = Math.min(target.x, target.x + target.width);
-    const right = Math.max(target.x, target.x + target.width);
-    const top = Math.min(target.y, target.y + target.height);
-    const bottom = Math.max(target.y, target.y + target.height);
-    const start = normalizePoint({ x: left, y: top });
-    const end = normalizePoint({ x: right, y: bottom });
-    command.x = start.x;
-    command.y = start.y;
-    command.width = end.x - start.x;
-    command.height = end.y - start.y;
-    transformCommandMasks(command, gestureState.originalCommand, gestureState.originalSelectionBounds);
-    return;
-  }
-
-  if (command.type === "pen") {
-    const originalBounds = gestureState.originalBounds;
-    const padding = displaySize(command) / 2 + 1;
-    const targetSelection = resizeBounds(gestureState.originalSelectionBounds, handle.id, point, preserveAspect);
-    const targetGeometry = {
-      x: targetSelection.x + padding,
-      y: targetSelection.y + padding,
-      width: targetSelection.width - padding * 2,
-      height: targetSelection.height - padding * 2,
-    };
-    const scaleX = targetGeometry.width / Math.max(originalBounds.width, 1);
-    const scaleY = targetGeometry.height / Math.max(originalBounds.height, 1);
-
-    command.points = gestureState.originalCommand.points.map((originalPoint) => {
-      const pixel = pixelPoint(originalPoint);
-      return normalizePoint({
-        x: targetGeometry.x + (pixel.x - originalBounds.x) * scaleX,
-        y: targetGeometry.y + (pixel.y - originalBounds.y) * scaleY,
-        pressure: originalPoint.pressure,
-      });
-    });
-    transformCommandMasks(command, gestureState.originalCommand, gestureState.originalSelectionBounds);
-  }
-}
-
-function updatePointerCursor(point, visible = true) {
-  pointerCursor.value = { x: point.x, y: point.y, visible };
-}
-
-function isPointInCanvas(point) {
-  return point.x >= 0 && point.y >= 0 && point.x <= stageSize.value.width && point.y <= stageSize.value.height;
-}
-
-const { onPointerDown, onCanvasDoubleClick, onPointerMove, finishPointer, onCanvasLeave } = useSketchPointer({
-  activeTool, activeShape, strokeColor, strokeSize, activePopover, commands, selectedIndex, selectedCommand, selectionCursor,
-  pointerCursor, clone, pushHistory, announce, selectCommand, findResizeHandle, findCommand, selectionBounds, geometryBounds,
-  resizeCommand, translateCommand, normalizePoint, pixelPoint, eventPoint, render, renderLive, renderEraserPreview, startText,
-  beginTextEdit, updatePointerCursor, isPointInCanvas, getResizeCursor, hitSelectionFrame, getViewScale: () => camera.value.scale, applyEraser,
-});
-
-function handleStagePointerDown(event) {
-  if (startPan(event)) {
-    closePopover();
-    pointerCursor.value.visible = false;
-    return;
-  }
-  onPointerDown(event);
-}
-
-function handleStagePointerMove(event) {
-  if (movePan(event)) return;
-  onPointerMove(event);
-}
-
-function finishStagePointer(event, cancelled = false) {
-  if (finishPan(event)) return;
-  finishPointer(event, cancelled);
-}
-
-function cancelWindowPointer(event) {
-  finishStagePointer(event, true);
-}
-
-function zoomCanvas(factor) {
-  if (!zoomBy(factor)) return;
-  announce(copy.messages.canvasZoom(zoomPercent.value));
-}
-
-function resetCanvasView() {
-  if (!resetView()) return;
-  announce(copy.messages.canvasViewReset);
-}
-
-function toggleCanvasPan() {
-  setPanMode();
-  pointerCursor.value.visible = false;
-  announce(panMode.value ? copy.messages.panEnabled : copy.messages.panDisabled);
-}
-
-function moveSelectedObject(targetIndex, message) {
-  const from = selectedIndex.value;
-  if (from < 0) return;
-  const boundedTarget = Math.min(commands.value.length - 1, Math.max(0, targetIndex));
-  if (from === boundedTarget) return;
-  const previous = clone();
-  const [command] = commands.value.splice(from, 1);
-  commands.value.splice(boundedTarget, 0, command);
-  selectedIndex.value = boundedTarget;
-  closeObjectContextMenu();
-  pushHistory(previous);
-  announce(message);
-}
-
-function closeObjectContextMenu() {
-  objectContextMenu.value = null;
-}
-
-function openObjectContextMenu(event) {
-  const target = event.target;
-  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target.isContentEditable) return;
-  event.preventDefault();
-  const point = eventPoint(event);
-  const index = findCommand(point);
-  if (index < 0) {
-    closeObjectContextMenu();
-    return;
-  }
-  if (textEditor.value) commitText();
-  closePopover();
-  setPanMode(false);
-  activeTool.value = "select";
-  selectedIndex.value = index;
-  selectionCursor.value = "grab";
-  objectContextMenu.value = { x: point.x, y: point.y };
-  render();
-}
-
-function sendSelectedToBack() {
-  moveSelectedObject(0, copy.messages.sentToBack);
-}
-
-function moveSelectedBackward() {
-  moveSelectedObject(selectedIndex.value - 1, copy.messages.movedBackward);
-}
-
-function moveSelectedForward() {
-  moveSelectedObject(selectedIndex.value + 1, copy.messages.movedForward);
-}
-
-function bringSelectedToFront() {
-  moveSelectedObject(commands.value.length - 1, copy.messages.broughtToFront);
-}
-
-function selectTool(tool) {
-  setPanMode(false);
-  selectDrawingTool(tool);
-}
-
-function toggleShapeMenu(anchor) {
-  setPanMode(false);
-  openShapeMenu(anchor);
-}
-
-function confirmClearCanvas() {
-  if (!hasContent.value) return;
-  const previous = clone();
-  commands.value = [];
-  drawingRatio.value = ratioValue.value;
-  selectedIndex.value = -1;
-  selectionCursor.value = "default";
-  closePopover();
-  pushHistory(previous);
-  resetView();
-  announce(copy.messages.canvasCleared);
-}
-
-function requestClearCanvas(anchor) {
-  if (activePopover.value === "clear") closePopover();
-  else openPopover("clear", anchor, { confirm: confirmClearCanvas, cancel: closePopover });
-}
-
-function toggleBackgroundMenu(anchor) {
-  if (activePopover.value === "background") closePopover();
-  else openPopover("background", anchor, { preview: previewBackgroundColor, select: setBackgroundColor }, { get current() { return backgroundColor.value; } });
-}
-
-function toggleViewMenu(anchor) {
-  if (activePopover.value === "view") {
-    closePopover();
-    return;
-  }
-  openPopover("view", anchor, {
-    togglePan: toggleCanvasPan,
-    zoomIn: () => zoomCanvas(1.2),
-    zoomOut: () => zoomCanvas(1 / 1.2),
-    reset: resetCanvasView,
-  }, {
-    get zoomPercent() { return zoomPercent.value; },
-    get panActive() { return panMode.value; },
-    get canZoomIn() { return zoom.value < maxZoom; },
-    get canZoomOut() { return zoom.value > minZoom; },
-  });
-}
-
-function previewBackgroundColor(color) {
-  if (!color || color === canvasBackgroundColor.value) return;
-  backgroundPreviewColor.value = color;
-  render();
-}
-
-function setBackgroundColor(color) {
-  if (!color || color === backgroundColor.value) return;
-  const previous = clone();
-  const previousContext = { backgroundColor: backgroundColor.value };
-  backgroundColor.value = color;
-  backgroundPreviewColor.value = null;
-  pushHistory(previous, previousContext);
-  render();
-  announce(copy.messages.backgroundUpdated);
-}
-
-function closeDialog() {
-  closeObjectContextMenu();
-  emit("update:modelValue", false);
-}
-
-function onKeydown(event) {
-  const target = event.target;
-  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target.isContentEditable) {
-    return;
-  }
-  if (event.code === "Space") {
-    event.preventDefault();
-    setSpacePressed(true);
-    pointerCursor.value.visible = false;
-    return;
-  }
-  const modifier = event.metaKey || event.ctrlKey;
-  if (modifier && selectedIndex.value >= 0 && ["BracketLeft", "BracketRight"].includes(event.code)) {
-    event.preventDefault();
-    if (event.code === "BracketLeft") event.shiftKey ? sendSelectedToBack() : moveSelectedBackward();
-    else event.shiftKey ? bringSelectedToFront() : moveSelectedForward();
-    return;
-  }
-  if (modifier && event.key.toLowerCase() === "z") {
-    event.preventDefault();
-    event.shiftKey ? redo() : undo();
-  }
-  if (event.key === "Escape" && objectContextMenu.value) {
-    closeObjectContextMenu();
-    return;
-  }
-  if (event.key === "Escape" && panMode.value) {
-    setPanMode(false);
-    announce(copy.messages.panDisabled);
-    return;
-  }
-  if (event.key === "Escape" && selectedIndex.value >= 0) {
-    selectedIndex.value = -1;
-    selectionCursor.value = "default";
-    render();
-    return;
-  }
-  if (event.key === "Enter" && selectedCommand.value?.type === "text") {
-    event.preventDefault();
-    beginTextEdit(selectedIndex.value);
-    return;
-  }
-  if (["ArrowUp", "ArrowRight", "ArrowDown", "ArrowLeft"].includes(event.key) && selectedIndex.value >= 0) {
-    event.preventDefault();
-    const previous = clone();
-    const distance = event.shiftKey ? 10 : 1;
-    const offsets = {
-      ArrowUp: [0, -camera.value.toWorldDistance(distance)],
-      ArrowRight: [camera.value.toWorldXDistance(distance), 0],
-      ArrowDown: [0, camera.value.toWorldDistance(distance)],
-      ArrowLeft: [-camera.value.toWorldXDistance(distance), 0],
-    };
-    translateCommand(selectedCommand.value, ...offsets[event.key]);
-    pushHistory(previous);
-    return;
-  }
-  if (["Backspace", "Delete"].includes(event.key) && selectedIndex.value >= 0) {
-    event.preventDefault();
-    const previous = clone();
-    commands.value.splice(selectedIndex.value, 1);
-    selectedIndex.value = -1;
-    closeObjectContextMenu();
-    pushHistory(previous);
-    announce(copy.messages.objectDeleted);
-  }
-}
-
-function onKeyup(event) {
-  if (event.code === "Space") setSpacePressed(false);
-}
-
-watch(strokeSize, (size) => announce(copy.messages.brushSize(size)));
-watch(activePopover, (active, previous) => {
-  if (previous === "background" && active !== "background" && backgroundPreviewColor.value) {
-    backgroundPreviewColor.value = null;
-    render();
-  }
-});
-watch(textValue, (value) => {
-  if (!textEditor.value) return;
-  const command = commands.value[textEditor.value.index];
-  if (command) command.text = value;
-});
-
-onMounted(() => {
-  window.addEventListener("pointerup", finishStagePointer);
-  window.addEventListener("pointercancel", cancelWindowPointer);
-  window.addEventListener("blur", cancelPan);
-});
-
-onBeforeUnmount(() => {
-  cancelPan();
-  window.removeEventListener("pointerup", finishStagePointer);
-  window.removeEventListener("pointercancel", cancelWindowPointer);
-  window.removeEventListener("blur", cancelPan);
-});
+function announce(message) { statusMessage.value = ""; requestAnimationFrame(() => { statusMessage.value = message; }); }
+function id() { return crypto.randomUUID?.() || `sketch-object-${Date.now()}-${sequence += 1}`; }
+function stageNode() { return konvaStage.value?.getNode(); }
+function documentNode() { return documentGroup.value?.getNode(); }
+function command(idValue) { return commands.value.find((item) => item.id === idValue); }
+function objectNode(idValue) { return nodes.get(idValue); }
+function registerNode(idValue, component) { if (component) nodes.set(idValue, component.getNode?.() || component); else nodes.delete(idValue); }
+function eventScreenPoint(event) { const stage = stageNode(); if (!stage) return null; if (event?.evt) return stage.getPointerPosition(); stage.setPointersPositions(event); return stage.getPointerPosition(); }
+function point(event) { const screen = eventScreenPoint(event), group = documentNode(); if (!screen || !group) return { x: 0, y: 0, pressure: .5 }; return { ...group.getAbsoluteTransform().copy().invert().point(screen), pressure: event?.evt?.pressure || event?.pressure || .5 }; }
+function pointFromNative(event) { return point(event); }
+function screenPoint(docPoint) { return documentNode()?.getAbsoluteTransform().point(docPoint) || docPoint; }
+function targetCommand(node) { for (let current = node; current; current = current.getParent?.()) { const target = command(current.getAttr?.("commandId")); if (target) return target; } return null; }
+function isTransformerTarget(node) { for (let current = node; current; current = current.getParent?.()) { if (current.getClassName?.() === "Transformer") return true; } return false; }
+function refresh() { nextTick(() => { syncTransformer(); cacheMasks(); stageNode()?.batchDraw(); }); }
+function syncTransformer() { const node = objectNode(selectedId.value), current = transformer.value?.getNode?.(); if (!current) return; current.nodes(node && activeTool.value === "select" ? [node] : []); current.getLayer()?.batchDraw(); }
+function cacheMasks() { const ratio = Math.min(4, Math.max(1, (window.devicePixelRatio || 1) * documentTransform.value.scale)); commands.value.forEach((item) => { const node = objectNode(item.id); if (!node) return; node.clearCache(); if (item.masks?.length) node.cache({ pixelRatio: ratio }); }); }
+function resizeCanvases() { const element = stageContainer.value; if (!element?.clientWidth || !element.clientHeight) return; stageSize.value = { width: element.clientWidth, height: element.clientHeight }; stageNode()?.size(stageSize.value); refresh(); }
+function config(item) { return { id: item.id, commandId: item.id, name: "sketch-object", x: item.x, y: item.y, rotation: item.rotation || 0, draggable: activeTool.value === "select" && textEditor.value?.id !== item.id, onMouseenter: selectionEnter, onMouseleave: selectionLeave, onDragstart: dragStart, onDragend: dragEnd, onTransformstart: transformStart, onTransformend: transformEnd }; }
+function lineConfig(item) { return { x: 0, y: 0, width: item.width, height: item.height, stroke: item.color, strokeWidth: item.strokeWidth, lineCap: "round", lineJoin: "round" }; }
+function textConfig(item) { return { name: "sketch-text", x: 0, y: -2, text: item.text, width: item.width, fontSize: item.fontSize, fontFamily: "Inter, sans-serif", fontStyle: "600", lineHeight: 1.25, fill: item.color, opacity: textEditor.value?.id === item.id ? 0 : 1, visible: true }; }
+function imageConfig(item) { return { x: 0, y: 0, image: getImage(item.assetId), width: item.width, height: item.height }; }
+function freehandOutline(item) { return getStroke(item.points.map((p) => [p.x, p.y, p.pressure]), { size: item.strokeWidth, thinning: item.usePressure ? .45 : 0, smoothing: .85, streamline: .28, simulatePressure: false, last: true }); }
+function outlineBounds(outline) { const xs = outline.map((p) => p[0]), ys = outline.map((p) => p[1]); return { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(1, Math.max(...xs) - Math.min(...xs)), height: Math.max(1, Math.max(...ys) - Math.min(...ys)) }; }
+function freehandConfig(item, preview = false) { const outline = freehandOutline(item), bounds = outline.length ? outlineBounds(outline) : { x: 0, y: 0, width: 1, height: 1 }; return { ...bounds, fill: preview ? "rgba(168,168,168,.5)" : item.color, listening: !preview, sceneFunc: freehandScene(outline, bounds) }; }
+function maskConfig(mask) { const outline = freehandOutline(mask), bounds = outline.length ? outlineBounds(outline) : { x: 0, y: 0, width: 1, height: 1 }; return { ...bounds, fill: "#000", globalCompositeOperation: "destination-out", listening: false, sceneFunc: freehandScene(outline, bounds) }; }
+function freehandScene(outline, bounds) { return (context, shape) => { if (!outline.length) return; const local = outline.map((point) => [point[0] - bounds.x, point[1] - bounds.y]); context.beginPath(); context.moveTo(...local[0]); for (let index = 1; index < local.length; index += 1) { const current = local[index], next = local[(index + 1) % local.length]; context.quadraticCurveTo(current[0], current[1], (current[0] + next[0]) / 2, (current[1] + next[1]) / 2); } context.closePath(); context.fillStrokeShape(shape); }; }
+function heartConfig(item) { return { ...lineConfig(item), sceneFunc: (context, shape) => { const { width: w, height: h } = item; context.beginPath(); context.moveTo(w / 2, h * .28); context.bezierCurveTo(w / 2, h * .12, w * .43, 0, w * .27, 0); context.bezierCurveTo(w * .12, 0, 0, h * .12, 0, h * .3); context.bezierCurveTo(0, h * .5, w * .08, h * .72, w / 2, h); context.bezierCurveTo(w * .92, h * .72, w, h * .5, w, h * .3); context.bezierCurveTo(w, h * .12, w * .88, 0, w * .73, 0); context.bezierCurveTo(w * .57, 0, w / 2, h * .12, w / 2, h * .28); context.closePath(); context.fillStrokeShape(shape); } }; }
+function polygonConfig(item, sides, rotation = 0) { return { ...lineConfig(item), x: item.width / 2, y: item.height / 2, sides, radius: .5, rotation, scaleX: item.width, scaleY: item.height }; }
+function starConfig(item) { return { ...lineConfig(item), x: item.width / 2, y: item.height / 2, numPoints: 5, innerRadius: .21, outerRadius: .5, scaleX: item.width, scaleY: item.height }; }
+function normalizePen(item, next) { let x = next.x - item.x, y = next.y - item.y; if (x < 0) { item.x += x; item.points.forEach((p) => { p.x -= x; }); x = 0; } if (y < 0) { item.y += y; item.points.forEach((p) => { p.y -= y; }); y = 0; } item.points.push({ x, y, pressure: next.pressure }); }
+function createPen(next) { return { id: id(), type: "pen", x: next.x, y: next.y, rotation: 0, points: [{ x: 0, y: 0, pressure: next.pressure }], color: strokeColor.value, strokeWidth: strokeSize.value / documentTransform.value.scale, usePressure: false, masks: [] }; }
+function createShape(next) { return { id: id(), type: "shape", shape: activeShape.value, x: next.x, y: next.y, rotation: 0, width: 1, height: 1, points: [0, 0, 1, 1], color: strokeColor.value, strokeWidth: strokeSize.value / documentTransform.value.scale, masks: [] }; }
+function updateShape(item, from, to) { const x = Math.min(from.x, to.x), y = Math.min(from.y, to.y); item.x = x; item.y = y; item.width = Math.max(1, Math.abs(to.x - from.x)); item.height = Math.max(1, Math.abs(to.y - from.y)); item.points = [from.x - x, from.y - y, to.x - x, to.y - y]; }
+function eraserAt(next) { const item = targetCommand(stageNode()?.getIntersection(screenPoint(next))); if (item) gesture.targets.add(item.id); }
+function appendEraser(next) { const points = eraserPreview.value.points, last = points.at(-1), count = Math.max(1, Math.ceil(Math.hypot(next.x - last.x, next.y - last.y) / 8)); for (let i = 1; i <= count; i += 1) { const sample = { x: last.x + (next.x - last.x) * i / count, y: last.y + (next.y - last.y) * i / count, pressure: next.pressure }; points.push(sample); eraserAt(sample); } }
+function maskFor(item, eraser) { const inverse = objectNode(item.id)?.getAbsoluteTransform().copy().invert(); return inverse && { strokeWidth: eraser.strokeWidth, usePressure: false, points: eraser.points.map((p) => ({ ...inverse.point(screenPoint(p)), pressure: p.pressure })) }; }
+function handleDown(event) { const native = event.evt, next = point(event); if (native.button === 1 || native.button === 0 && (panMode.value || spacePressed.value)) { gesture = { type: "pan", last: eventScreenPoint(event) }; isPanning.value = true; return; } if (native.button) return; closePopover(); if (isTransformerTarget(event.target)) return; const hit = targetCommand(event.target); if (activeTool.value === "select") { selectedId.value = hit?.id || null; refresh(); return; } if (activeTool.value === "text") { if (hit?.type === "text") editText(hit.id); else gesture = { type: "text", point: next }; return; } const previous = clone(); if (activeTool.value === "pen") { draft.value = createPen(next); draft.value.usePressure = native.pointerType === "pen"; gesture = { type: "pen", previous }; } else if (activeTool.value === "shape") { draft.value = createShape(next); gesture = { type: "shape", from: next, previous }; } else if (activeTool.value === "eraser") { eraserPreview.value = { points: [next], strokeWidth: strokeSize.value / documentTransform.value.scale, usePressure: false }; gesture = { type: "eraser", previous, targets: new Set() }; eraserAt(next); } }
+function handleMove(event) { const next = point(event), screen = eventScreenPoint(event); if (screen) pointerCursor.value = { x: screen.x, y: screen.y, visible: true }; if (!gesture) return; if (gesture.type === "pan") { pan.value = { x: pan.value.x + screen.x - gesture.last.x, y: pan.value.y + screen.y - gesture.last.y }; gesture.last = screen; return; } if (gesture.type === "text") return; if (gesture.type === "pen") normalizePen(draft.value, next); else if (gesture.type === "shape") updateShape(draft.value, gesture.from, next); else appendEraser(next); }
+function finishGesture(event, cancelled = false) { if (!gesture) return; const current = gesture; gesture = null; isPanning.value = false; if (current.type === "pan" || cancelled) { draft.value = null; eraserPreview.value = null; return; } if (current.type === "text") { newText(current.point); return; } const next = point(event); if (current.type === "pen") { normalizePen(draft.value, next); commands.value.push(draft.value); draft.value = null; pushHistory(current.previous); announce(copy.messages.contentAdded); } else if (current.type === "shape") { updateShape(draft.value, current.from, next); if (Math.hypot(draft.value.width, draft.value.height) > 4) { commands.value.push(draft.value); selectedId.value = draft.value.id; activeTool.value = "select"; pushHistory(current.previous); announce(copy.messages.contentAdded); } draft.value = null; } else { appendEraser(next); current.targets.forEach((idValue) => { const item = command(idValue), mask = item && maskFor(item, eraserPreview.value); if (mask) (item.masks ||= []).push(mask); }); eraserPreview.value = null; if (current.targets.size) { pushHistory(current.previous); announce(copy.messages.contentErased); } } refresh(); }
+function cancelGesture(event) { finishGesture(event, true); }
+function selectionEnter() { if (activeTool.value === "select") selectionCursor.value = "grab"; }
+function selectionLeave() { if (activeTool.value === "select" && !transformPrevious) selectionCursor.value = "default"; }
+function dragStart(event) { const item = targetCommand(event.target); if (!item) return; selectedId.value = item.id; selectionCursor.value = "grabbing"; transformPrevious = clone(); }
+function dragEnd(event) { const item = targetCommand(event.target); if (!item || !transformPrevious) return; item.x = event.target.x(); item.y = event.target.y(); item.rotation = event.target.rotation(); selectionCursor.value = "grab"; pushHistory(transformPrevious); transformPrevious = null; announce(copy.messages.objectMoved); refresh(); }
+function scaleMask(mask, x, y) { return { ...mask, strokeWidth: mask.strokeWidth * ((Math.abs(x) + Math.abs(y)) / 2), points: mask.points.map((p) => ({ ...p, x: p.x * x, y: p.y * y })) }; }
+function transformStart() { transformPrevious = clone(); }
+function transformEnd(event) { const item = selectedCommand.value, node = event.target; if (!item || !transformPrevious) return; const x = node.scaleX(), y = node.scaleY(), strokeScale = (Math.abs(x) + Math.abs(y)) / 2; if (item.type === "pen") { item.points = item.points.map((p) => ({ ...p, x: p.x * x, y: p.y * y })); item.strokeWidth *= strokeScale; } else if (item.type === "shape") { item.width *= x; item.height *= y; item.points = item.points.map((p, i) => p * (i % 2 ? y : x)); item.strokeWidth *= strokeScale; } else if (item.type === "text") { item.width *= x; item.fontSize = Math.max(12, Math.min(160, item.fontSize * y)); } else { item.width *= x; item.height *= y; } item.masks = (item.masks || []).map((mask) => scaleMask(mask, x, y)); item.x = node.x(); item.y = node.y(); item.rotation = node.rotation(); node.scale({ x: 1, y: 1 }); pushHistory(transformPrevious); transformPrevious = null; announce(copy.messages.objectResized); refresh(); }
+function newText(next) { const previous = clone(), item = { id: id(), type: "text", x: next.x, y: next.y, rotation: 0, text: "", width: 240, fontSize: 32, color: strokeColor.value, masks: [] }, editor = { id: item.id, previous, isNew: true }; commands.value.push(item); selectedId.value = item.id; activeTool.value = "select"; textEditor.value = editor; textValue.value = ""; refresh(); nextTick(() => textInput.value?.focusAtEnd()); }
+function editText(idValue) { const item = command(idValue); if (!item || item.type !== "text") return; selectedId.value = idValue; textEditor.value = { id: idValue, previous: clone(), isNew: false }; textValue.value = item.text; activeTool.value = "select"; refresh(); nextTick(() => { objectNode(idValue)?.findOne(".sketch-text")?.opacity(0); textInput.value?.focusAtEnd(); }); }
+function commitText() { const editor = textEditor.value, item = editor && command(editor.id); if (!editor || !item) return; textEditor.value = null; item.text = textValue.value.replace(/\r/g, "").trimEnd(); const textNode = objectNode(item.id)?.findOne(".sketch-text"); textNode?.visible(true); textNode?.opacity(1); if (!item.text.trim()) { commands.value = editor.isNew ? editor.previous : commands.value.filter((entry) => entry.id !== item.id); selectedId.value = null; if (!editor.isNew) pushHistory(editor.previous); } else if (JSON.stringify(editor.previous) !== JSON.stringify(commands.value)) { pushHistory(editor.previous); announce(editor.isNew ? copy.messages.textAdded : copy.messages.textUpdated); } refresh(); }
+function cancelText() { const editor = textEditor.value; if (!editor) return; commands.value = editor.previous; selectedId.value = editor.isNew ? null : editor.id; textEditor.value = null; textValue.value = ""; refresh(); }
+function contextMenu(event) { event.preventDefault(); const item = targetCommand(stageNode()?.getIntersection(eventScreenPoint(event))); if (!item) return; selectedId.value = item.id; activeTool.value = "select"; objectContextMenu.value = eventScreenPoint(event); refresh(); }
+function moveItem(next, message) { const from = selectionOrder.value; if (from < 0 || from === next) return; const previous = clone(), [item] = commands.value.splice(from, 1); commands.value.splice(Math.max(0, Math.min(next, commands.value.length)), 0, item); objectContextMenu.value = null; pushHistory(previous); announce(message); refresh(); }
+function zoomBy(factor, focus = { x: stageSize.value.width / 2, y: stageSize.value.height / 2 }) { const next = Math.max(minZoom, Math.min(maxZoom, zoom.value * factor)); if (next === zoom.value) return false; const before = { x: (focus.x - documentTransform.value.x) / documentTransform.value.scale, y: (focus.y - documentTransform.value.y) / documentTransform.value.scale }, fit = documentTransform.value.scale / zoom.value; zoom.value = Math.round(next * 1000) / 1000; const scale = fit * zoom.value; pan.value = { x: focus.x - (stageSize.value.width - documentSize.value.width * scale) / 2 - before.x * scale, y: focus.y - (stageSize.value.height - 1000 * scale) / 2 - before.y * scale }; refresh(); return true; }
+function setPanMode(value = !panMode.value) { panMode.value = value; }
+function resetView() { zoom.value = 1; pan.value = { x: 0, y: 0 }; refresh(); announce(copy.messages.canvasViewReset); }
+function toggleView(anchor) { if (activePopover.value === "view") return closePopover(); openPopover("view", anchor, { togglePan: () => setPanMode(), zoomIn: () => zoomBy(1.2), zoomOut: () => zoomBy(1 / 1.2), reset: resetView }, { get zoomPercent() { return zoomPercent.value; }, get panActive() { return panMode.value; }, get canZoomIn() { return zoom.value < maxZoom; }, get canZoomOut() { return zoom.value > minZoom; } }); }
+function createOutputCanvas() { const stage = stageNode(), t = transformer.value?.getNode?.(), visible = t?.visible(), preview = eraserPreview.value; if (!stage) return null; if (t) t.visible(false); eraserPreview.value = null; stage.draw(); const output = stage.toCanvas({ pixelRatio: window.devicePixelRatio || 1 }); if (t) t.visible(visible); eraserPreview.value = preview; stage.batchDraw(); return output; }
+function clearCanvas() { const previous = clone(); commands.value = []; selectedId.value = null; pushHistory(previous); closePopover(); resetView(); announce(copy.messages.canvasCleared); }
+function backgroundMenu(anchor) { if (activePopover.value === "background") return closePopover(); openPopover("background", anchor, { preview: (color) => { backgroundPreviewColor.value = color; refresh(); }, select: (color) => { if (color === backgroundColor.value) return; const previous = clone(), previousColor = backgroundColor.value; backgroundColor.value = color; backgroundPreviewColor.value = null; pushHistory(previous, { backgroundColor: previousColor }); refresh(); } }, { get current() { return backgroundColor.value; } }); }
+function closeDialog() { emit("update:modelValue", false); }
+function keydown(event) { if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return; if (event.code === "Space") { event.preventDefault(); spacePressed.value = true; return; } const modifier = event.metaKey || event.ctrlKey; if (modifier && event.key.toLowerCase() === "z") { event.preventDefault(); return event.shiftKey ? redo() : undo(); } if (event.key === "Escape") { selectedId.value = null; return refresh(); } if (["Backspace", "Delete"].includes(event.key) && selectedId.value) { const previous = clone(); commands.value = commands.value.filter((item) => item.id !== selectedId.value); selectedId.value = null; pushHistory(previous); refresh(); } }
+watch(textValue, (value) => { if (textEditor.value) command(textEditor.value.id).text = value; });
+watch([selectedId, activeTool], refresh);
+watch(activePopover, (value, previous) => { if (previous === "background" && value !== "background") backgroundPreviewColor.value = null; });
+onMounted(() => { observer = new ResizeObserver(resizeCanvases); observer.observe(stageContainer.value); window.addEventListener("pointermove", handleMove); window.addEventListener("pointerup", finishGesture); window.addEventListener("pointercancel", cancelGesture); resizeCanvases(); });
+onBeforeUnmount(() => { observer?.disconnect(); window.removeEventListener("pointermove", handleMove); window.removeEventListener("pointerup", finishGesture); window.removeEventListener("pointercancel", cancelGesture); });
 </script>
 
 <template>
-  <Teleport :to="teleportTarget">
-    <div v-show="modelValue" class="sketch-modal chat-sketch-canvas" :class="{ 'is-interface-fullscreen': interfaceFullscreen, 'is-embedded': embedded }">
-      <div class="sketch-backdrop"></div>
-      <div ref="dialog" class="sketch-dialog" :style="dialogStyle" :role="embedded ? 'main' : 'dialog'" :aria-modal="embedded ? undefined : true" aria-labelledby="sketch-dialog-title" tabindex="-1" @pointerdown="closeObjectContextMenu" @keydown="onKeydown" @keyup="onKeyup">
-      <section class="sketch-editor" :class="{ 'is-controls-outside': effectiveControlsOutside }">
-          <h2 id="sketch-dialog-title" class="sr-only">{{ copy.labels.dialog }}</h2>
-        <div id="sketch-popover-host"></div>
-
-        <SketchToolbar
-          :active-tool="activeTool"
-          :active-shape="activeShape"
-          :shape-menu-open="activePopover === 'shape'"
-          :can-undo="canUndo"
-          :can-redo="canRedo"
-          :is-fullscreen="isFullscreen"
-          :is-browser-fullscreen="browserFullscreen"
-          :has-content="hasContent"
-          :controls-outside="effectiveControlsOutside"
-          :zoom-percent="zoomPercent"
-          :active-popover="activePopover"
-          :image-loading="imageLoading"
-          :embedded="embedded"
-          @close="closeDialog"
-          @select-tool="selectTool"
-          @toggle-shapes="toggleShapeMenu"
-          @select-shape="selectShape"
-          @undo="undo"
-          @redo="redo"
-          @clear="requestClearCanvas"
-          @toggle-controls="toggleCanvasControls"
-          @toggle-ratio="toggleRatioMenu"
-          @toggle-background="toggleBackgroundMenu"
-          @toggle-browser-fullscreen="toggleBrowserFullscreen"
-          @toggle-view="toggleViewMenu"
-          @add-image="openImagePicker"
-          @close-popover="closePopover"
-        />
-
-        <input ref="imageInput" hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" @change="addImage" />
-
-
-        <div class="sketch-body">
-          <div
-            ref="stage"
-            class="sketch-stage"
-            role="application"
-            :aria-label="copy.labels.canvas"
-            tabindex="0"
-            :class="{ 'is-image-drag-active': imageDragActive, 'is-transparent-background': canvasBackgroundColor === 'transparent' }"
-            :style="{ cursor: canvasCursor }"
-            @dragenter="handleImageDragEnter"
-            @dragover="handleImageDragOver"
-            @dragleave="handleImageDragLeave"
-            @drop="handleImageDrop"
-            @pointerdown="handleStagePointerDown"
-            @pointermove="handleStagePointerMove"
-            @pointerup="finishStagePointer"
-            @pointercancel="(event) => finishStagePointer(event, true)"
-            @pointerenter="updatePointerCursor(eventPoint($event))"
-            @pointerleave="onCanvasLeave"
-            @contextmenu="openObjectContextMenu"
-            @dblclick="panMode ? null : onCanvasDoubleClick($event)"
-            @wheel="handleWheel"
-          >
-            <v-stage ref="konvaStage" class="konva-stage" :config="stageConfig">
-              <v-layer ref="backgroundLayer" :config="{ listening: false }">
-                <v-rect ref="backgroundRect" :config="backgroundConfig" />
-              </v-layer>
-              <v-layer ref="contentLayer" :config="{ listening: false }">
-                <v-shape :config="{ listening: false, sceneFunc: drawContentScene }" />
-              </v-layer>
-              <v-layer ref="overlayLayer" :config="{ listening: false }">
-                <v-shape :config="{ listening: false, sceneFunc: drawOverlayScene }" />
-              </v-layer>
-            </v-stage>
-
-          <ObjectContextMenu
-            v-if="objectContextMenu"
-            :style="objectContextMenuStyle"
-            :can-move-backward="canMoveBackward"
-            :can-move-forward="canMoveForward"
-            @pointerdown.stop
-            @wheel.stop
-            @send-to-back="sendSelectedToBack"
-            @move-backward="moveSelectedBackward"
-            @move-forward="moveSelectedForward"
-            @bring-to-front="bringSelectedToFront"
-          />
-
-          <span class="brush-cursor" :style="pointerCursorStyle" aria-hidden="true"></span>
-
-          <StrokeSizePreview :visible="strokeSizePreviewVisible" :size="strokeSize" :color="strokeColor" />
-
-          <SketchTextEditor
-            v-if="textEditor"
-            ref="textInput"
-            v-model="textValue"
-            class="canvas-text-editor"
-            :style="textEditorStyle"
-            @transform-start="startTextTransform"
-            @transform-move="moveTextTransform"
-            @transform-end="finishTextTransform"
-            @cancel="cancelText"
-            @commit="commitText"
-          />
-
-          </div>
-        </div>
-        <ColorPalette :model-value="strokeColor" :outside="effectiveControlsOutside" @update:model-value="setStrokeColor" />
-        <OutputActions :disabled="!hasContent" :can-copy="hasContent" :can-attach="Boolean(submit)" :attaching="attaching" :copy-succeeded="copySucceeded" :outside="effectiveControlsOutside" @attach="attachCanvas" @download="downloadCanvas" @copy="copyCanvas" />
-        <StrokeSizeControl
-          :model-value="strokeSize"
-          :outside="effectiveControlsOutside"
-          @adjust-start="showStrokeSizePreview"
-          @adjust-end="hideStrokeSizePreview"
-          @update:model-value="setStrokeSize"
-        />
-        <div class="sr-only" aria-live="polite">{{ statusMessage }}</div>
-      </section>
-      </div>
-    </div>
-  </Teleport>
+  <Teleport :to="teleportTarget"><div v-show="modelValue" class="sketch-modal chat-sketch-canvas" :class="{ 'is-interface-fullscreen': interfaceFullscreen, 'is-embedded': embedded }"><div class="sketch-backdrop"></div><div ref="dialog" class="sketch-dialog" :style="dialogStyle" tabindex="-1" @keydown="keydown" @keyup="(event) => { if (event.code === 'Space') spacePressed = false; }"><section class="sketch-editor"><div id="sketch-popover-host"></div>
+    <SketchToolbar :active-tool="activeTool" :active-shape="activeShape" :shape-menu-open="activePopover === 'shape'" :can-undo="canUndo" :can-redo="canRedo" :is-fullscreen="isFullscreen" :is-browser-fullscreen="browserFullscreen" :has-content="hasContent" :controls-outside="effectiveControlsOutside" :zoom-percent="zoomPercent" :active-popover="activePopover" :image-loading="imageLoading" :embedded="embedded" @close="closeDialog" @select-tool="(tool) => { setPanMode(false); controls.selectTool(tool); }" @toggle-shapes="controls.toggleShapeMenu" @select-shape="controls.selectShape" @undo="undo" @redo="redo" @clear="(anchor) => openPopover('clear', anchor, { confirm: clearCanvas, cancel: closePopover })" @toggle-controls="controls.toggleControlsOutside" @toggle-ratio="controls.toggleRatioMenu" @toggle-background="backgroundMenu" @toggle-browser-fullscreen="toggleBrowserFullscreen" @toggle-view="toggleView" @add-image="openImagePicker" @close-popover="closePopover" />
+    <input ref="imageInput" hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" @change="addImage" />
+    <div class="sketch-body"><div ref="stageContainer" class="sketch-stage" tabindex="0" :class="{ 'is-image-drag-active': imageDragActive, 'is-transparent-background': background === 'transparent' }" :style="{ cursor: canvasCursor }" @dragenter="handleImageDragEnter" @dragover="handleImageDragOver" @dragleave="handleImageDragLeave" @drop="handleImageDrop" @contextmenu="contextMenu">
+      <v-stage ref="konvaStage" class="konva-stage" :config="stageConfig" @pointerdown="handleDown" @mouseleave="() => { pointerCursor.visible = false; }" @dblclick="(event) => { const item = targetCommand(event.target); if (item?.type === 'text') editText(item.id); }" @wheel="(event) => { event.evt.preventDefault(); zoomBy(Math.exp(-event.evt.deltaY * .0015), eventScreenPoint(event)); }">
+        <v-layer><v-rect :config="{ width: stageSize.width, height: stageSize.height, fill: background, listening: false }" /></v-layer>
+        <v-layer><v-group ref="documentGroup" :config="documentConfig"><v-group v-for="item in commands" :key="item.id" :ref="(node) => registerNode(item.id, node)" :config="config(item)">
+          <v-image v-if="item.type === 'image'" :config="imageConfig(item)" /><v-text v-else-if="item.type === 'text'" :config="textConfig(item)" /><v-shape v-else-if="item.type === 'pen'" :config="freehandConfig(item)" /><v-rect v-else-if="item.shape === 'rectangle'" :config="lineConfig(item)" /><v-ellipse v-else-if="item.shape === 'ellipse'" :config="{ ...lineConfig(item), x: item.width / 2, y: item.height / 2, radiusX: item.width / 2, radiusY: item.height / 2 }" /><v-line v-else-if="item.shape === 'line'" :config="{ ...lineConfig(item), points: item.points }" /><v-arrow v-else-if="item.shape === 'arrow'" :config="{ ...lineConfig(item), points: item.points }" /><v-regular-polygon v-else-if="item.shape === 'triangle'" :config="polygonConfig(item, 3, -90)" /><v-regular-polygon v-else-if="item.shape === 'diamond'" :config="polygonConfig(item, 4, 45)" /><v-star v-else-if="item.shape === 'star'" :config="starConfig(item)" /><v-shape v-else :config="heartConfig(item)" /><v-shape v-for="(mask, i) in item.masks" :key="`${item.id}-${i}`" :config="maskConfig(mask)" />
+        </v-group><v-group v-if="draft" :config="config(draft)"><v-shape v-if="draft.type === 'pen'" :config="freehandConfig(draft)" /><v-rect v-else-if="draft.shape === 'rectangle'" :config="lineConfig(draft)" /><v-ellipse v-else-if="draft.shape === 'ellipse'" :config="{ ...lineConfig(draft), x: draft.width / 2, y: draft.height / 2, radiusX: draft.width / 2, radiusY: draft.height / 2 }" /><v-line v-else-if="draft.shape === 'line'" :config="{ ...lineConfig(draft), points: draft.points }" /><v-arrow v-else-if="draft.shape === 'arrow'" :config="{ ...lineConfig(draft), points: draft.points }" /><v-regular-polygon v-else-if="draft.shape === 'triangle'" :config="polygonConfig(draft, 3, -90)" /><v-regular-polygon v-else-if="draft.shape === 'diamond'" :config="polygonConfig(draft, 4, 45)" /><v-star v-else-if="draft.shape === 'star'" :config="starConfig(draft)" /><v-shape v-else :config="heartConfig(draft)" /></v-group></v-group></v-layer>
+        <v-layer><v-group :config="documentConfig"><v-shape v-if="eraserPreview" :config="freehandConfig(eraserPreview, true)" /><v-transformer ref="transformer" :config="transformerConfig" /></v-group></v-layer>
+      </v-stage><ImageDropOverlay :visible="imageDragActive" /><ObjectContextMenu v-if="objectContextMenu" :style="menuStyle" :can-move-backward="canMoveBackward" :can-move-forward="canMoveForward" @send-to-back="() => moveItem(0, copy.messages.sentToBack)" @move-backward="() => moveItem(selectionOrder - 1, copy.messages.movedBackward)" @move-forward="() => moveItem(selectionOrder + 1, copy.messages.movedForward)" @bring-to-front="() => moveItem(commands.length - 1, copy.messages.broughtToFront)" /><span class="brush-cursor" :style="pointerCursorStyle"></span><StrokeSizePreview :visible="strokeSizePreviewVisible" :size="strokeSize" :color="strokeColor" /><SketchTextEditor v-if="textEditor" ref="textInput" v-model="textValue" :style="textEditorStyle" @cancel="cancelText" @commit="commitText" /></div></div>
+    <ColorPalette :model-value="strokeColor" :outside="effectiveControlsOutside" @update:model-value="controls.setStrokeColor" /><OutputActions :disabled="!hasContent" :can-copy="hasContent" :can-attach="Boolean(submit)" :attaching="attaching" :copy-succeeded="copySucceeded" :outside="effectiveControlsOutside" @attach="attachCanvas" @download="downloadCanvas" @copy="copyCanvas" /><StrokeSizeControl :model-value="strokeSize" :outside="effectiveControlsOutside" @adjust-start="strokeSizePreviewVisible = true" @adjust-end="strokeSizePreviewVisible = false" @update:model-value="controls.setStrokeSize" /><span class="sr-only">{{ statusMessage }}</span>
+  </section></div></div></Teleport>
 </template>
 
 <style scoped>
-.sketch-modal {
-  position: fixed;
-  z-index: 100;
-  inset: 0;
-  display: grid;
-  place-items: center;
-}
-
-.sketch-backdrop {
-  position: absolute;
-  inset: 0;
-  background: var(--sketch-color-backdrop);
-  backdrop-filter: blur(3px);
-}
-
-.sketch-modal.is-interface-fullscreen {
-  place-items: stretch;
-}
-
-.sketch-modal.is-interface-fullscreen .sketch-backdrop {
-  display: none;
-}
-
-.sketch-modal.is-interface-fullscreen .sketch-dialog {
-  width: 100vw;
-  height: 100dvh;
-  aspect-ratio: auto;
-  border-radius: 0;
-  box-shadow: none;
-  transform: none;
-}
-
-.sketch-modal.is-embedded .sketch-backdrop {
-  display: none;
-}
-
-.sketch-dialog {
-  position: relative;
-  width: min(760px, calc(100vw - 32px), calc((100dvh - 32px) * var(--sketch-ratio)));
-  aspect-ratio: var(--sketch-ratio);
-  height: auto;
-  max-width: none;
-  max-height: none;
-  padding: 0;
-  overflow: visible;
-  border: 0;
-  border-radius: var(--sketch-radius-md);
-  background: transparent;
-  color: var(--sketch-color-text);
-  box-shadow: var(--sketch-shadow-dialog);
-  transform: translateX(var(--sketch-outside-offset-x, 0));
-  transition: width var(--sketch-transition-expand), aspect-ratio var(--sketch-transition-expand), transform var(--sketch-transition-expand);
-}
-
-.sketch-dialog {
-  animation: dialog-in 220ms ease-out;
-}
-
-.sketch-editor,
-.sketch-body,
-.sketch-stage {
-  position: relative;
-  width: 100%;
-  height: 100%;
-}
-
-.sketch-editor {
-  container-type: inline-size;
-  overflow: visible;
-  border-radius: inherit;
-}
-
-.sketch-body {
-  display: block;
-  overflow: hidden;
-  border-radius: inherit;
-  background: var(--sketch-color-surface);
-}
-
-.sketch-stage {
-  background: var(--sketch-color-surface);
-  touch-action: none;
-  user-select: none;
-}
-
-.konva-stage,
-.konva-stage :deep(.konvajs-content),
-.sketch-stage canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.sketch-stage {
-  outline: none;
-}
-
-.sketch-stage.is-transparent-background {
-  background-color: #181818;
-  background-image: linear-gradient(45deg, #282828 25%, transparent 25%), linear-gradient(-45deg, #282828 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #282828 75%), linear-gradient(-45deg, transparent 75%, #282828 75%);
-  background-position: 0 0, 0 10px, 10px -10px, -10px 0;
-  background-size: 20px 20px;
-}
-
-.sketch-stage::after {
-  position: absolute;
-  z-index: var(--sketch-z-controls);
-  inset: 10px;
-  border: 2px dashed transparent;
-  border-radius: calc(var(--sketch-radius-md) - 8px);
-  content: "";
-  pointer-events: none;
-  transition: border-color var(--sketch-transition-fast), background-color var(--sketch-transition-fast);
-}
-
-.sketch-stage.is-image-drag-active::after {
-  border-color: var(--sketch-color-selection);
-  background: rgba(109, 216, 183, 0.06);
-}
-
-.brush-cursor {
-  position: absolute;
-  z-index: calc(var(--sketch-z-controls) - 1);
-  border: 1px solid rgba(0, 0, 0);
-  border-radius: 50%;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255);
-  pointer-events: none;
-  transform: translate(-50%, -50%);
-  transition: opacity 80ms ease;
-}
-
-@keyframes dialog-in {
-  from {
-    opacity: 0;
-    transform: translate(var(--sketch-outside-offset-x, 0), 8px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(var(--sketch-outside-offset-x, 0));
-  }
-}
-
-@media (max-width: 640px) {
-  .sketch-dialog {
-    width: min(calc(100vw - 16px), calc((100dvh - 16px) * var(--sketch-ratio)));
-  }
-
-}
+.sketch-modal{position:fixed;z-index:100;inset:0;display:grid;place-items:center}.sketch-backdrop{position:absolute;inset:0;background:var(--sketch-color-backdrop);backdrop-filter:blur(3px)}.sketch-modal.is-interface-fullscreen{place-items:stretch}.sketch-modal.is-interface-fullscreen .sketch-backdrop,.sketch-modal.is-embedded .sketch-backdrop{display:none}.sketch-modal.is-interface-fullscreen .sketch-dialog{width:100vw;height:100dvh;aspect-ratio:auto;border-radius:0;box-shadow:none}.sketch-modal.is-interface-fullscreen .sketch-body{border-radius:0}.sketch-dialog{position:relative;width:min(760px,calc(100vw - 32px),calc((100dvh - 32px) * var(--sketch-ratio)));aspect-ratio:var(--sketch-ratio);border-radius:var(--sketch-radius-md);box-shadow:var(--sketch-shadow-dialog);outline:0;overflow:visible;transform:translateX(var(--sketch-outside-offset-x,0))}.sketch-editor,.sketch-body,.sketch-stage{position:relative;width:100%;height:100%}.sketch-body{overflow:hidden;border-radius:var(--sketch-radius-md);background:var(--sketch-color-surface)}.sketch-stage,.konva-stage,.konva-stage :deep(.konvajs-content),.sketch-stage canvas{border-radius:inherit}.sketch-stage{outline:0;touch-action:none;user-select:none}.konva-stage,.konva-stage :deep(.konvajs-content),.sketch-stage canvas{position:absolute;inset:0;width:100%;height:100%}.sketch-stage.is-transparent-background{background-color:#181818;background-image:linear-gradient(45deg,#282828 25%,transparent 25%),linear-gradient(-45deg,#282828 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#282828 75%),linear-gradient(-45deg,transparent 75%,#282828 75%);background-position:0 0,0 10px,10px -10px,-10px 0;background-size:20px 20px}.brush-cursor{position:absolute;z-index:9;border:1px solid #fff;border-radius:50%;box-shadow:0 0 0 1px #000;pointer-events:none;transform:translate(-50%,-50%)}@media(max-width:640px){.sketch-dialog{width:min(calc(100vw - 16px),calc((100dvh - 16px) * var(--sketch-ratio)))}}
 </style>

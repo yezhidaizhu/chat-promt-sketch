@@ -3,14 +3,13 @@ import { locale } from "../locales/index.js";
 
 const copy = locale.sketch;
 
-export function useSketchControls({ state, clone, pushHistory, render, resizeCanvases, announce, commitText, onRatioChange, getCurrentRatio = () => state.canvasRatio.value, getViewScale = () => 1 }) {
-  const { activeTool, activeShape, strokeColor, strokeSize, selectedCommand, selectedIndex, activePopover, controlsOutside, canvasRatio } = state;
+export function useSketchControls({ state, clone, pushHistory, render, resizeCanvases, announce, commitText, onRatioChange, getCurrentRatio = () => state.canvasRatio.value, getDocumentScale = () => 1 }) {
+  const { activeTool, activeShape, strokeColor, strokeSize, selectedCommand, selectedId, activePopover, controlsOutside, canvasRatio } = state;
 
   function selectTool(tool) {
     if (state.textEditor.value) commitText();
     activeTool.value = tool;
-    selectedIndex.value = -1;
-    state.selectionCursor.value = "default";
+    selectedId.value = null;
     closePopover();
     render();
     announce(copy.messages.toolSelected(copy.tools[tool] || copy.labels.shape));
@@ -19,7 +18,7 @@ export function useSketchControls({ state, clone, pushHistory, render, resizeCan
   function toggleShapeMenu(anchor) {
     if (state.textEditor.value) commitText();
     activeTool.value = "shape";
-    selectedIndex.value = -1;
+    selectedId.value = null;
     if (activePopover.value === "shape") closePopover();
     else openPopover("shape", anchor, { select: selectShape }, { activeShape: activeShape.value });
     render();
@@ -51,22 +50,21 @@ export function useSketchControls({ state, clone, pushHistory, render, resizeCan
     announce(copy.messages.shapeSelected(shape.label));
   }
 
-  function selectCommand(index) {
-    selectedIndex.value = index;
-    if (index < 0) state.selectionCursor.value = "default";
-    const command = state.commands.value[index];
+  function selectCommand(id) {
+    selectedId.value = id;
+    const command = state.commands.value.find((item) => item.id === id);
     if (command?.color) strokeColor.value = command.color;
-    if (command && ["shape", "pen"].includes(command.type)) strokeSize.value = command.worldSize ? command.size * getViewScale() : command.size;
+    if (command && ["shape", "pen"].includes(command.type)) strokeSize.value = command.strokeWidth * getDocumentScale();
   }
 
   function setStrokeSize(size) {
     strokeSize.value = size;
     const command = selectedCommand.value;
     if (!command || !["shape", "pen"].includes(command.type)) return;
-    const commandSize = command.worldSize ? size / getViewScale() : size;
-    if (command.size === commandSize) return;
+    const strokeWidth = size / getDocumentScale();
+    if (command.strokeWidth === strokeWidth) return;
     const previous = clone();
-    command.size = commandSize;
+    command.strokeWidth = strokeWidth;
     pushHistory(previous);
     announce(copy.messages.objectSize(size));
   }
