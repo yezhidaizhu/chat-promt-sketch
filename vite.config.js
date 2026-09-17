@@ -5,6 +5,7 @@ import vue from "@vitejs/plugin-vue";
 export default defineConfig(({ mode }) => ({
   plugins: [vue()],
   build: mode === "library" ? {
+    outDir: "dist/package",
     lib: {
       entry: resolve(import.meta.dirname, "src/index.js"),
       formats: ["es"],
@@ -13,5 +14,7 @@ export default defineConfig(({ mode }) => ({
     rollupOptions: {
       external: ["vue", "vue-konva", "konva", "@lucide/vue", "perfect-freehand"],
     },
-  } : undefined,
+  } : {
+    outDir: "dist/demo",
+  },
 }));

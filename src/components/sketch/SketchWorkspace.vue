@@ -235,6 +235,14 @@ const { textLayout, textEditorBounds, startText, beginTextEdit, commitText, canc
 controls = useSketchControls({ state: { activeTool, activeShape, strokeColor, strokeSize, commands, selectedIndex, activePopover, controlsOutside, canvasRatio, textEditor, selectionCursor, selectedCommand }, clone, pushHistory, render, resizeCanvases, announce, commitText, onRatioChange: changeCanvasRatio, getCurrentRatio: () => interfaceFullscreen.value ? "fill" : canvasRatio.value, getViewScale: () => camera.value.scale });
 const { selectTool: selectDrawingTool, toggleShapeMenu: openShapeMenu, toggleControlsOutside, toggleRatioMenu, selectShape, selectCommand, setStrokeSize, setStrokeColor } = controls;
 
+async function toggleCanvasControls() {
+  if (props.embedded && interfaceFullscreen.value) {
+    interfaceFullscreen.value = false;
+    await nextTick();
+  }
+  toggleControlsOutside();
+}
+
 function showStrokeSizePreview() {
   strokeSizePreviewVisible.value = true;
 }
@@ -783,7 +791,7 @@ onBeforeUnmount(() => {
           @undo="undo"
           @redo="redo"
           @clear="requestClearCanvas"
-          @toggle-controls="toggleControlsOutside"
+          @toggle-controls="toggleCanvasControls"
           @toggle-ratio="toggleRatioMenu"
           @toggle-background="toggleBackgroundMenu"
           @toggle-browser-fullscreen="toggleBrowserFullscreen"

@@ -37,7 +37,7 @@ export function useSketchDialogLayout({
     set: (value) => { canvasLayout.value = value ? "fill" : "ratio"; },
   });
   const isFullscreen = computed(() => interfaceFullscreen.value || browserFullscreen.value);
-  const effectiveControlsOutside = computed(() => !getEmbedded() && controlsOutside.value && !isFullscreen.value);
+  const effectiveControlsOutside = computed(() => controlsOutside.value && !isFullscreen.value);
   const ratioValue = computed(() => {
     const [width, height] = canvasRatio.value.split(":").map(Number);
     return width / height;
@@ -50,12 +50,11 @@ export function useSketchDialogLayout({
     const outsideWidth = 60;
     const canvasWidth = Math.min(
       760,
-      viewport.value.width - 32 - outsideWidth,
+      viewport.value.width - 32 - outsideWidth * 2,
       (viewport.value.height - 32 - outsideHeight) * ratioValue.value,
     );
     return {
       ...style,
-      "--sketch-outside-offset-x": `${outsideWidth / 2}px`,
       width: `${canvasWidth}px`,
     };
   });

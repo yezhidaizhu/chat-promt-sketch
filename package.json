@@ -9,18 +9,18 @@
     "prepare": "npm run build:package",
     "preview": "vite preview"
   },
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
+  "main": "./dist/package/index.js",
+  "module": "./dist/package/index.js",
   "types": "./src/index.d.ts",
   "exports": {
     ".": {
       "types": "./src/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/package/index.js"
     },
-    "./styles.css": "./dist/index.css"
+    "./styles.css": "./dist/package/index.css"
   },
   "files": [
-    "dist",
+    "dist/package",
     "src/index.d.ts"
   ],
   "peerDependencies": {
