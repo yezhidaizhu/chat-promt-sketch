@@ -346,6 +346,24 @@ const toolLabels = copy.tools;
   outline-offset: 2px;
 }
 
+@container (max-width: 500px) {
+  .editor-header.is-outside:not(.is-embedded) {
+    right: auto;
+    left: 50%;
+    display: flex;
+    width: calc(100vw - var(--sketch-space-2) * 2);
+    justify-content: center;
+    column-gap: var(--sketch-space-2);
+    transform: translateX(calc(-50% - var(--sketch-outside-offset-x, 0px)));
+  }
+
+  .editor-header.is-outside:not(.is-embedded) .close-button,
+  .editor-header.is-outside:not(.is-embedded) .tool-group,
+  .editor-header.is-outside:not(.is-embedded) .action-group {
+    flex: 0 0 auto;
+  }
+}
+
 
 @media (max-width: 640px) {
   .editor-header {
@@ -406,6 +424,35 @@ const toolLabels = copy.tools;
   .tool-button {
     width: 28px;
     height: 28px;
+  }
+}
+
+@container (max-width: 420px) {
+  .editor-header.is-outside:not(.is-embedded) .tool-group {
+    --toolbar-control-size: var(--sketch-control-size);
+    width: auto;
+    flex: 1 1 auto;
+    justify-content: flex-start;
+    gap: 2px;
+    padding: var(--sketch-space-1);
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: none;
+    touch-action: pan-x;
+  }
+
+  .editor-header.is-outside:not(.is-embedded) .tool-group::-webkit-scrollbar {
+    display: none;
+  }
+
+  .editor-header.is-outside:not(.is-embedded) .action-group {
+    gap: var(--sketch-space-2);
+  }
+
+  .editor-header.is-outside:not(.is-embedded) .icon-button,
+  .editor-header.is-outside:not(.is-embedded) .tool-button {
+    width: var(--sketch-control-size);
+    height: var(--sketch-control-size);
   }
 }
 

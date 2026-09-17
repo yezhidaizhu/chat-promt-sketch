@@ -48,13 +48,15 @@ export function useSketchDialogLayout({
 
     const outsideHeight = 104;
     const outsideWidth = 60;
+    const compact = viewport.value.width <= 720;
     const canvasWidth = Math.min(
       760,
-      viewport.value.width - 32 - outsideWidth * 2,
+      viewport.value.width - 32 - outsideWidth * (compact ? 1 : 2),
       (viewport.value.height - 32 - outsideHeight) * ratioValue.value,
     );
     return {
       ...style,
+      ...(compact ? { "--sketch-outside-offset-x": `${outsideWidth / 2}px` } : {}),
       width: `${canvasWidth}px`,
     };
   });

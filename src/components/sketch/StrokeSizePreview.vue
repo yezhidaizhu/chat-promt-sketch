@@ -40,8 +40,12 @@ const dotStyle = computed(() => ({
   height: 84px;
   place-items: center;
   padding: 12px;
+  border-radius: var(--sketch-radius-md);
+  background: rgba(27, 27, 27, 0.56);
   pointer-events: none;
   transform: translate(-50%, -50%);
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
+  backdrop-filter: blur(12px) saturate(120%);
 }
 
 .stroke-size-preview__dot {
