@@ -2,7 +2,7 @@ import { ref, watch } from "vue";
 
 const storageKey = "chat-promt-sketch:preferences";
 const defaultPreferences = {
-  controlsOutside: false,
+  controlsOutside: true,
   canvasRatio: "1:1",
   strokeColor: "#ffffff",
   strokeSize: 13,
