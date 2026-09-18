@@ -3,6 +3,7 @@ import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import ColorPalette from "./ColorPalette.vue";
 import ObjectContextMenu from "./ObjectContextMenu.vue";
 import OutputActions from "./OutputActions.vue";
+import SketchSelectionFrame from "./SketchSelectionFrame.vue";
 import SketchToolbar from "./SketchToolbar.vue";
 import StrokeSizeControl from "./StrokeSizeControl.vue";
 import StrokeSizePreview from "./StrokeSizePreview.vue";
@@ -21,6 +22,7 @@ import { closePopover, openPopover } from "../../composables/usePopover.js";
 import { isSelectionFrameHit as hitSelectionFrame, resizeCursor as getResizeCursor } from "../../utils/hitTest.js";
 import { drawFreehand, drawShape } from "../../utils/sketchDrawing.js";
 import { createSketchCamera } from "../../utils/sketchCamera.js";
+import { inverseRotatePoint, rectCenter, rotatePoint } from "../../utils/sketchGeometry.js";
 import { locale } from "../../locales/index.js";
 
 const props = defineProps({
@@ -178,7 +180,17 @@ const textEditorStyle = computed(() => {
     color: command.color,
     fontSize: `${displaySize(command)}px`,
     lineHeight: textLineHeight,
+    transform: `rotate(${command.rotation || 0}rad)`,
+    transformOrigin: "center",
+    "--selection-counter-rotation": `${-(command.rotation || 0)}rad`,
   };
+});
+const textRotateAbove = computed(() => {
+  if (!textEditor.value) return false;
+  const command = commands.value[textEditor.value.index];
+  if (!command) return false;
+  const bounds = textEditorBounds(command);
+  return bounds.y + bounds.height + 50 > stageSize.value.height;
 });
 
 const { undoStack, redoStack, canUndo, canRedo, clone, pushHistory, undo, redo } = useHistory(
@@ -250,8 +262,25 @@ function showStrokeSizePreview() {
 function hideStrokeSizePreview() {
   strokeSizePreviewVisible.value = false;
 }
-selectionApi = useSketchSelection({ commands, selectedIndex, pixelPoint, textLayout, displaySize });
-const { commandBounds, geometryBounds, selectionBounds, findResizeHandle, resizeBounds, findCommand } = selectionApi;
+selectionApi = useSketchSelection({ commands, selectedIndex, pixelPoint, textLayout, getStageSize: () => stageSize.value, displaySize });
+const { commandBounds, geometryBounds, selectionBounds, rotatedSelectionBounds, findResizeHandle, resizeBounds, findCommand } = selectionApi;
+const selectionFrame = computed(() => {
+  const command = selectedCommand.value;
+  if (textEditor.value || !command || (command.type === "shape" && ["line", "arrow"].includes(command.shape))) return null;
+  const bounds = selectionBounds(command);
+  const rotation = command.rotation || 0;
+  return {
+    frameStyle: {
+      left: `${bounds.x}px`,
+      top: `${bounds.y}px`,
+      width: `${bounds.width}px`,
+      height: `${bounds.height}px`,
+      transform: `rotate(${rotation}rad)`,
+      "--selection-counter-rotation": `${-rotation}rad`,
+    },
+    rotateAbove: bounds.y + bounds.height + 50 > stageSize.value.height,
+  };
+});
 const canMoveBackward = computed(() => selectedIndex.value > 0);
 const canMoveForward = computed(() => selectedIndex.value >= 0 && selectedIndex.value < commands.value.length - 1);
 const objectContextMenuStyle = computed(() => {
@@ -325,34 +354,47 @@ function migrateLegacyCommands() {
 }
 
 function drawCommand(context, command, preview = false) {
-  if (command.type === "image") {
-    const image = getImage(command.assetId);
-    if (!image) return;
-    const start = pixelPoint(command);
-    const end = pixelPoint({ x: command.x + command.width, y: command.y + command.height });
-    context.drawImage(image, start.x, start.y, end.x - start.x, end.y - start.y);
-    return;
-  }
-  const drawable = command.worldSize ? { ...command, size: camera.value.toScreenDistance(command.size) } : command;
-  if (["pen", "eraser"].includes(drawable.type)) {
-    drawFreehand(context, drawable, pixelPoint, preview);
-    return;
-  }
-  if (drawable.type === "shape") {
-    drawShape(context, drawable, pixelPoint);
-    return;
-  }
-  if (command.type === "text") {
-    if (textEditor.value?.index === commands.value.indexOf(command)) return;
-    const point = pixelPoint(command);
-    const layout = textLayout(command);
-    context.save();
-    context.fillStyle = command.color;
-    context.font = `600 ${displaySize(command)}px Inter, sans-serif`;
-    context.textBaseline = "top";
-    layout.lines.forEach((line, index) => {
-      context.fillText(line, point.x, point.y + index * layout.lineHeight, layout.width);
-    });
+  context.save();
+  try {
+    const rotation = command.rotation || 0;
+    if (rotation) {
+      const center = rectCenter(selectionApi.geometryBounds(command));
+      context.translate(center.x, center.y);
+      context.rotate(rotation);
+      context.translate(-center.x, -center.y);
+    }
+
+    if (command.type === "image") {
+      const image = getImage(command.assetId);
+      if (!image) return;
+      const start = pixelPoint(command);
+      const end = pixelPoint({ x: command.x + command.width, y: command.y + command.height });
+      context.drawImage(image, start.x, start.y, end.x - start.x, end.y - start.y);
+      return;
+    }
+    const drawable = command.worldSize ? { ...command, size: camera.value.toScreenDistance(command.size) } : command;
+    if (["pen", "eraser"].includes(drawable.type)) {
+      drawFreehand(context, drawable, pixelPoint, preview);
+      return;
+    }
+    if (drawable.type === "shape") {
+      drawShape(context, drawable, pixelPoint);
+      return;
+    }
+    if (command.type === "text") {
+      if (textEditor.value?.index === commands.value.indexOf(command)) return;
+      const point = pixelPoint(command);
+      const layout = textLayout(command);
+      context.fillStyle = command.color;
+      const fontSize = displaySize(command);
+      const leading = (layout.lineHeight - fontSize) / 2;
+      context.font = `600 ${fontSize}px Inter, sans-serif`;
+      context.textBaseline = "top";
+      layout.lines.forEach((line, index) => {
+        context.fillText(line, point.x, point.y + leading + index * layout.lineHeight, layout.width);
+      });
+    }
+  } finally {
     context.restore();
   }
 }
@@ -383,18 +425,60 @@ function transformCommandMasks(command, originalCommand, originalBounds, nextBou
   const scaleX = nextBounds.width / originalBounds.width;
   const scaleY = nextBounds.height / originalBounds.height;
   const sizeScale = (Math.abs(scaleX) + Math.abs(scaleY)) / 2;
+  const originalCenter = rectCenter(originalBounds);
+  const nextCenter = rectCenter(nextBounds);
+  const originalRotation = originalCommand.rotation || 0;
+  const nextRotation = command.rotation || 0;
   command.masks = originalCommand.masks.map((mask) => ({
     ...mask,
     size: mask.size * sizeScale,
     points: mask.points.map((point) => {
-      const pixel = pixelPoint(point);
+      const local = inverseRotatePoint(pixelPoint(point), originalCenter, originalRotation);
+      const transformed = rotatePoint({
+        x: nextBounds.x + (local.x - originalBounds.x) * scaleX,
+        y: nextBounds.y + (local.y - originalBounds.y) * scaleY,
+        pressure: point.pressure,
+      }, nextCenter, nextRotation);
       return normalizePoint({
-        x: nextBounds.x + (pixel.x - originalBounds.x) * scaleX,
-        y: nextBounds.y + (pixel.y - originalBounds.y) * scaleY,
+        x: transformed.x,
+        y: transformed.y,
         pressure: point.pressure,
       });
     }),
   }));
+}
+
+function oppositeAnchor(bounds, handleId) {
+  const center = rectCenter(bounds);
+  return {
+    x: handleId.includes("w") ? bounds.x + bounds.width : handleId.includes("e") ? bounds.x : center.x,
+    y: handleId.includes("n") ? bounds.y + bounds.height : handleId.includes("s") ? bounds.y : center.y,
+  };
+}
+
+function finalizeResize(command, gestureState) {
+  const rotation = gestureState.originalCommand.rotation || 0;
+  if (rotation) {
+    const originalBounds = gestureState.originalSelectionBounds;
+    const nextBounds = selectionBounds(command);
+    const originalAnchor = rotatePoint(oppositeAnchor(originalBounds, gestureState.handle.id), rectCenter(originalBounds), rotation);
+    const nextAnchor = rotatePoint(oppositeAnchor(nextBounds, gestureState.handle.id), rectCenter(nextBounds), rotation);
+    const originalWorld = normalizePoint(originalAnchor);
+    const nextWorld = normalizePoint(nextAnchor);
+    translateCommand(command, originalWorld.x - nextWorld.x, originalWorld.y - nextWorld.y);
+  }
+  transformCommandMasks(command, gestureState.originalCommand, gestureState.originalSelectionBounds, selectionBounds(command));
+}
+
+function rotateCommand(command, point, gestureState, snap = false) {
+  const currentAngle = Math.atan2(point.y - gestureState.center.y, point.x - gestureState.center.x);
+  let rotation = gestureState.originalRotation + currentAngle - gestureState.startAngle;
+  if (snap) {
+    const step = Math.PI / 12;
+    rotation = Math.round(rotation / step) * step;
+  }
+  command.rotation = rotation;
+  transformCommandMasks(command, gestureState.originalCommand, gestureState.originalSelectionBounds, gestureState.originalSelectionBounds);
 }
 
 function applyEraser(command) {
@@ -402,7 +486,7 @@ function applyEraser(command) {
   const eraserBounds = commandBounds(command);
   let applied = false;
   commands.value.forEach((object) => {
-    const bounds = selectionBounds(object);
+    const bounds = rotatedSelectionBounds(object);
     const intersects = eraserBounds.x <= bounds.x + bounds.width && eraserBounds.x + eraserBounds.width >= bounds.x && eraserBounds.y <= bounds.y + bounds.height && eraserBounds.y + eraserBounds.height >= bounds.y;
     if (!intersects) return;
     object.masks ||= [];
@@ -414,7 +498,9 @@ function applyEraser(command) {
 
 function resizeCommand(command, point, gestureState, preserveAspect = false) {
   const handle = gestureState.handle;
-  const normalized = normalizePoint(point);
+  const rotation = gestureState.originalCommand.rotation || 0;
+  const localPoint = inverseRotatePoint(point, rectCenter(gestureState.originalSelectionBounds), rotation);
+  const normalized = normalizePoint(localPoint);
 
   if (command.type === "shape" && ["line", "arrow"].includes(command.shape)) {
     command[handle.id] = normalized;
@@ -424,25 +510,25 @@ function resizeCommand(command, point, gestureState, preserveAspect = false) {
 
   if (command.type === "shape") {
     const padding = displaySize(command) / 2 + 1;
-    const targetSelection = resizeBounds(gestureState.originalSelectionBounds, handle.id, point, preserveAspect);
+    const targetSelection = resizeBounds(gestureState.originalSelectionBounds, handle.id, localPoint, preserveAspect);
     const left = Math.min(targetSelection.x, targetSelection.x + targetSelection.width) + padding;
     const right = Math.max(targetSelection.x, targetSelection.x + targetSelection.width) - padding;
     const top = Math.min(targetSelection.y, targetSelection.y + targetSelection.height) + padding;
     const bottom = Math.max(targetSelection.y, targetSelection.y + targetSelection.height) - padding;
     command.start = normalizePoint({ x: left, y: top });
     command.end = normalizePoint({ x: right, y: bottom });
-    transformCommandMasks(command, gestureState.originalCommand, gestureState.originalSelectionBounds);
+    finalizeResize(command, gestureState);
     return;
   }
 
   if (command.type === "text") {
-    resizeTextCommand(command, point, gestureState);
-    transformCommandMasks(command, gestureState.originalCommand, gestureState.originalSelectionBounds);
+    resizeTextCommand(command, localPoint, gestureState);
+    finalizeResize(command, gestureState);
     return;
   }
 
   if (command.type === "image") {
-    const target = resizeBounds(gestureState.originalSelectionBounds, handle.id, point, preserveAspect);
+    const target = resizeBounds(gestureState.originalSelectionBounds, handle.id, localPoint, preserveAspect);
     const left = Math.min(target.x, target.x + target.width);
     const right = Math.max(target.x, target.x + target.width);
     const top = Math.min(target.y, target.y + target.height);
@@ -453,14 +539,14 @@ function resizeCommand(command, point, gestureState, preserveAspect = false) {
     command.y = start.y;
     command.width = end.x - start.x;
     command.height = end.y - start.y;
-    transformCommandMasks(command, gestureState.originalCommand, gestureState.originalSelectionBounds);
+    finalizeResize(command, gestureState);
     return;
   }
 
   if (command.type === "pen") {
     const originalBounds = gestureState.originalBounds;
     const padding = displaySize(command) / 2 + 1;
-    const targetSelection = resizeBounds(gestureState.originalSelectionBounds, handle.id, point, preserveAspect);
+    const targetSelection = resizeBounds(gestureState.originalSelectionBounds, handle.id, localPoint, preserveAspect);
     const targetGeometry = {
       x: targetSelection.x + padding,
       y: targetSelection.y + padding,
@@ -478,7 +564,7 @@ function resizeCommand(command, point, gestureState, preserveAspect = false) {
         pressure: originalPoint.pressure,
       });
     });
-    transformCommandMasks(command, gestureState.originalCommand, gestureState.originalSelectionBounds);
+    finalizeResize(command, gestureState);
   }
 }
 
@@ -493,7 +579,7 @@ function isPointInCanvas(point) {
 const { onPointerDown, onCanvasDoubleClick, onPointerMove, finishPointer, onCanvasLeave } = useSketchPointer({
   activeTool, activeShape, strokeColor, strokeSize, activePopover, commands, selectedIndex, selectedCommand, selectionCursor,
   pointerCursor, clone, pushHistory, announce, selectCommand, findResizeHandle, findCommand, selectionBounds, geometryBounds,
-  resizeCommand, translateCommand, normalizePoint, pixelPoint, eventPoint, render, renderLive, renderEraserPreview, startText,
+  resizeCommand, rotateCommand, translateCommand, normalizePoint, pixelPoint, eventPoint, render, renderLive, renderEraserPreview, startText,
   beginTextEdit, updatePointerCursor, isPointInCanvas, getResizeCursor, hitSelectionFrame, getViewScale: () => camera.value.scale, applyEraser,
 });
 
@@ -851,6 +937,12 @@ onBeforeUnmount(() => {
             @bring-to-front="bringSelectedToFront"
           />
 
+          <SketchSelectionFrame
+            v-if="selectionFrame"
+            :frame-style="selectionFrame.frameStyle"
+            :rotate-above="selectionFrame.rotateAbove"
+          />
+
           <span class="brush-cursor" :style="pointerCursorStyle" aria-hidden="true"></span>
 
           <StrokeSizePreview :visible="strokeSizePreviewVisible" :size="strokeSize" :color="strokeColor" />
@@ -861,6 +953,7 @@ onBeforeUnmount(() => {
             v-model="textValue"
             class="canvas-text-editor"
             :style="textEditorStyle"
+            :rotate-above="textRotateAbove"
             @transform-start="startTextTransform"
             @transform-move="moveTextTransform"
             @transform-end="finishTextTransform"

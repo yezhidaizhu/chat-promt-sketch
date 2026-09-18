@@ -1,3 +1,5 @@
+import { inverseRotatePoint, rectCenter } from "./sketchGeometry.js";
+
 export function pointToSegmentDistance(point, start, end) {
   const dx = end.x - start.x;
   const dy = end.y - start.y;
@@ -45,34 +47,36 @@ function shapeOutlineHit(command, point, pixelPoint, distance) {
 }
 
 export function isCommandHit(command, point, pixelPoint, commandBounds) {
+  const bounds = commandBounds(command);
+  const localPoint = inverseRotatePoint(point, rectCenter(bounds), command.rotation || 0);
   if (command.type === "text") {
-    const bounds = commandBounds(command);
-    return point.x >= bounds.x && point.x <= bounds.x + bounds.width && point.y >= bounds.y && point.y <= bounds.y + bounds.height;
+    return localPoint.x >= bounds.x && localPoint.x <= bounds.x + bounds.width && localPoint.y >= bounds.y && localPoint.y <= bounds.y + bounds.height;
   }
   const hitDistance = Math.max(command.size / 2 + 6, 8);
   if (command.type === "shape") {
-    if (["line", "arrow"].includes(command.shape)) return pointToSegmentDistance(point, pixelPoint(command.start), pixelPoint(command.end)) <= hitDistance;
-    return shapeOutlineHit(command, point, pixelPoint, hitDistance);
+    if (["line", "arrow"].includes(command.shape)) return pointToSegmentDistance(localPoint, pixelPoint(command.start), pixelPoint(command.end)) <= hitDistance;
+    return shapeOutlineHit(command, localPoint, pixelPoint, hitDistance);
   }
   if (command.type === "pen") {
     const points = command.points.map(pixelPoint);
     return points.some((current, index) => {
       const previous = points[index - 1];
-      return previous ? pointToSegmentDistance(point, previous, current) <= hitDistance : Math.hypot(point.x - current.x, point.y - current.y) <= hitDistance;
+      return previous ? pointToSegmentDistance(localPoint, previous, current) <= hitDistance : Math.hypot(localPoint.x - current.x, localPoint.y - current.y) <= hitDistance;
     });
   }
-  const bounds = commandBounds(command);
-  return point.x >= bounds.x && point.x <= bounds.x + bounds.width && point.y >= bounds.y && point.y <= bounds.y + bounds.height;
+  return localPoint.x >= bounds.x && localPoint.x <= bounds.x + bounds.width && localPoint.y >= bounds.y && localPoint.y <= bounds.y + bounds.height;
 }
 
 export function isSelectionFrameHit(command, point, selectionBounds) {
   if (!command || (command.type === "shape" && ["line", "arrow"].includes(command.shape))) return false;
   const bounds = selectionBounds(command);
-  return point.x >= bounds.x && point.x <= bounds.x + bounds.width && point.y >= bounds.y && point.y <= bounds.y + bounds.height;
+  const localPoint = inverseRotatePoint(point, rectCenter(bounds), command.rotation || 0);
+  return localPoint.x >= bounds.x && localPoint.x <= bounds.x + bounds.width && localPoint.y >= bounds.y && localPoint.y <= bounds.y + bounds.height;
 }
 
 export function resizeCursor(handle) {
   if (!handle) return "default";
+  if (handle.id === "rotate") return "grab";
   if (["nw", "se"].includes(handle.id)) return "nwse-resize";
   if (["ne", "sw"].includes(handle.id)) return "nesw-resize";
   if (["n", "s"].includes(handle.id)) return "ns-resize";

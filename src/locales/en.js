@@ -98,6 +98,7 @@ export default {
     undone: "Undone",
     redone: "Redone",
     objectResized: "Object resized",
+    objectRotated: "Object rotated",
     objectMoved: "Object moved",
     contentErased: "Content erased",
     contentAdded: "Content added",

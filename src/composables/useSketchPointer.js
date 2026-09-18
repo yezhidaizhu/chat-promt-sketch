@@ -7,7 +7,7 @@ export function useSketchPointer(options) {
   const {
     activeTool, activeShape, strokeColor, strokeSize, activePopover, commands, selectedIndex, selectedCommand, selectionCursor,
     clone, pushHistory, announce, selectCommand, findResizeHandle, findCommand, selectionBounds, geometryBounds, resizeCommand,
-    translateCommand, normalizePoint, pixelPoint, eventPoint, render, renderLive, renderEraserPreview, startText, beginTextEdit,
+    rotateCommand, translateCommand, normalizePoint, pixelPoint, eventPoint, render, renderLive, renderEraserPreview, startText, beginTextEdit,
     updatePointerCursor, isPointInCanvas, getResizeCursor, hitSelectionFrame, getViewScale, applyEraser,
   } = options;
   let gesture = null;
@@ -27,7 +27,9 @@ export function useSketchPointer(options) {
       const resizeHandle = findResizeHandle(point, event.pointerType);
       if (resizeHandle) {
         const command = commands.value[selectedIndex.value];
-        beginGesture(event, { type: "resize", handle: resizeHandle, previous: clone(), originalCommand: clone(command), originalBounds: ["shape", "pen"].includes(command.type) ? geometryBounds(command) : selectionBounds(command), originalSelectionBounds: selectionBounds(command), moved: false });
+        const originalSelectionBounds = selectionBounds(command);
+        const center = { x: originalSelectionBounds.x + originalSelectionBounds.width / 2, y: originalSelectionBounds.y + originalSelectionBounds.height / 2 };
+        beginGesture(event, { type: resizeHandle.id === "rotate" ? "rotate" : "resize", handle: resizeHandle, previous: clone(), originalCommand: clone(command), originalBounds: ["shape", "pen"].includes(command.type) ? geometryBounds(command) : originalSelectionBounds, originalSelectionBounds, center, startAngle: Math.atan2(point.y - center.y, point.x - center.x), originalRotation: command.rotation || 0, moved: false });
         selectionCursor.value = getResizeCursor(resizeHandle);
         return;
       }
@@ -70,6 +72,7 @@ export function useSketchPointer(options) {
       gesture.last = normalized; gesture.moved = true; selectionCursor.value = "grabbing"; render(); return;
     }
     if (gesture.type === "resize") { resizeCommand(commands.value[selectedIndex.value], point, gesture, event.shiftKey); gesture.moved = true; render(); return; }
+    if (gesture.type === "rotate") { rotateCommand(commands.value[selectedIndex.value], point, gesture, event.shiftKey); gesture.moved = true; selectionCursor.value = "grabbing"; render(); return; }
     if (gesture.type === "shape") gesture.command.end = normalizePoint(point);
     else (event.getCoalescedEvents?.() || [event]).forEach((pointerEvent) => gesture.command.points.push(normalizePoint(eventPoint(pointerEvent))));
     if (gesture.type === "eraser") renderEraserPreview(gesture.command); else renderLive(gesture.command);
@@ -78,15 +81,15 @@ export function useSketchPointer(options) {
   function finishPointer(event, cancelled = false) {
     if (!gesture || event.pointerId !== gesture.pointerId) return;
     if (gesture.captureTarget?.hasPointerCapture(gesture.pointerId)) gesture.captureTarget.releasePointerCapture(gesture.pointerId);
-    if (cancelled) { if (["move", "resize"].includes(gesture.type)) commands.value = gesture.previous; gesture = null; selectionCursor.value = selectedIndex.value >= 0 ? "grab" : "default"; render(); return; }
+    if (cancelled) { if (["move", "resize", "rotate"].includes(gesture.type)) commands.value = gesture.previous; gesture = null; selectionCursor.value = selectedIndex.value >= 0 ? "grab" : "default"; render(); return; }
     if (gesture.type === "text") { const { point } = gesture; gesture = null; startText(point); return; }
     const command = gesture.command;
     if (["pen", "eraser"].includes(command?.type)) {
       const endPoint = normalizePoint(eventPoint(event)); const lastPoint = command.points.at(-1);
       if (Math.hypot(endPoint.x - lastPoint.x, endPoint.y - lastPoint.y) > 0.0001) command.points.push(endPoint);
     }
-    if (["move", "resize"].includes(gesture.type)) {
-      if (gesture.moved) { pushHistory(gesture.previous); announce(gesture.type === "resize" ? copy.messages.objectResized : copy.messages.objectMoved); }
+    if (["move", "resize", "rotate"].includes(gesture.type)) {
+      if (gesture.moved) { pushHistory(gesture.previous); announce(gesture.type === "resize" ? copy.messages.objectResized : gesture.type === "rotate" ? copy.messages.objectRotated : copy.messages.objectMoved); }
     } else if (gesture.type === "eraser") {
       if (applyEraser(command)) { pushHistory(gesture.previous); announce(copy.messages.contentErased); } else render();
     } else {

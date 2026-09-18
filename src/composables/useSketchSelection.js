@@ -1,6 +1,25 @@
 import { isCommandHit } from "../utils/hitTest.js";
+import { rectCenter, rotatePoint, rotatedRectBounds } from "../utils/sketchGeometry.js";
 
-export function useSketchSelection({ commands, selectedIndex, pixelPoint, textLayout, displaySize = (command) => command.size }) {
+const selectionContrast = "rgba(0, 0, 0, 0.68)";
+const textSelectionPadding = 6;
+
+function drawSelectionHandle(context, handle) {
+  context.save();
+  context.beginPath();
+  context.arc(handle.x, handle.y, 6, 0, Math.PI * 2);
+  context.fillStyle = "#ffffff";
+  context.shadowColor = "rgba(0, 0, 0, 0.38)";
+  context.shadowBlur = 3;
+  context.fill();
+  context.shadowColor = "transparent";
+  context.strokeStyle = selectionContrast;
+  context.lineWidth = 1;
+  context.stroke();
+  context.restore();
+}
+
+export function useSketchSelection({ commands, selectedIndex, pixelPoint, textLayout, getStageSize, displaySize = (command) => command.size }) {
   function commandBounds(command) {
     if (command.type === "text") {
       const point = pixelPoint(command); const layout = textLayout(command);
@@ -30,7 +49,8 @@ export function useSketchSelection({ commands, selectedIndex, pixelPoint, textLa
   }
 
   function selectionBounds(command) {
-    const bounds = geometryBounds(command); const padding = ["shape", "pen"].includes(command.type) ? displaySize(command) / 2 + 1 : 0;
+    const bounds = geometryBounds(command);
+    const padding = command.type === "text" ? textSelectionPadding : ["shape", "pen"].includes(command.type) ? displaySize(command) / 2 + 1 : 0;
     return { x: bounds.x - padding, y: bounds.y - padding, width: bounds.width + padding * 2, height: bounds.height + padding * 2 };
   }
 
@@ -38,7 +58,12 @@ export function useSketchSelection({ commands, selectedIndex, pixelPoint, textLa
     if (!command || !["shape", "text", "pen", "image"].includes(command.type)) return [];
     if (command.type === "shape" && ["line", "arrow"].includes(command.shape)) return [{ id: "start", ...pixelPoint(command.start) }, { id: "end", ...pixelPoint(command.end) }];
     const bounds = selectionBounds(command);
-    return [["nw", bounds.x, bounds.y], ["n", bounds.x + bounds.width / 2, bounds.y], ["ne", bounds.x + bounds.width, bounds.y], ["e", bounds.x + bounds.width, bounds.y + bounds.height / 2], ["se", bounds.x + bounds.width, bounds.y + bounds.height], ["s", bounds.x + bounds.width / 2, bounds.y + bounds.height], ["sw", bounds.x, bounds.y + bounds.height], ["w", bounds.x, bounds.y + bounds.height / 2]].map(([id, x, y]) => ({ id, x, y }));
+    const center = rectCenter(bounds);
+    const rotation = command.rotation || 0;
+    const handles = [["nw", bounds.x, bounds.y], ["n", center.x, bounds.y], ["ne", bounds.x + bounds.width, bounds.y], ["e", bounds.x + bounds.width, center.y], ["se", bounds.x + bounds.width, bounds.y + bounds.height], ["s", center.x, bounds.y + bounds.height], ["sw", bounds.x, bounds.y + bounds.height], ["w", bounds.x, center.y]].map(([id, x, y]) => ({ id, rotation, ...rotatePoint({ x, y }, center, rotation) }));
+    const placeAbove = bounds.y + bounds.height + 50 > getStageSize().height;
+    handles.push({ id: "rotate", anchor: placeAbove ? "top" : "bottom", ...rotatePoint({ x: center.x, y: placeAbove ? bounds.y - 34 : bounds.y + bounds.height + 34 }, center, rotation) });
+    return handles;
   }
 
   function findResizeHandle(point, pointerType = "mouse") {
@@ -81,18 +106,23 @@ export function useSketchSelection({ commands, selectedIndex, pixelPoint, textLa
   function findCommand(point) {
     for (let index = commands.value.length - 1; index >= 0; index -= 1) {
       const command = commands.value[index];
-      const displayCommand = command.worldSize && command.size != null ? { ...command, size: displaySize(command) } : command;
+      const displayCommand = command.worldSize && command.size != null && command.type !== "text" ? { ...command, size: displaySize(command), worldSize: false } : command;
       if (command.type !== "eraser" && isCommandHit(displayCommand, point, pixelPoint, commandBounds)) return index;
     }
     return -1;
   }
 
-  function drawSelection(context) {
-    const command = commands.value[selectedIndex.value]; if (!command) return;
-    const bounds = selectionBounds(command); context.save(); context.strokeStyle = "#2c67c5"; context.lineWidth = 1.5; context.setLineDash([5, 5]);
-    if (!(command.type === "shape" && ["line", "arrow"].includes(command.shape))) context.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
-    context.setLineDash([]); selectionHandles(command).forEach((handle) => { context.fillStyle = "#ffffff"; context.strokeStyle = "#2c67c5"; context.lineWidth = 2; context.beginPath(); context.rect(handle.x - 5, handle.y - 5, 10, 10); context.fill(); context.stroke(); }); context.restore();
+  function rotatedSelectionBounds(command) {
+    return rotatedRectBounds(selectionBounds(command), command.rotation || 0);
   }
 
-  return { commandBounds, geometryBounds, selectionBounds, selectionHandles, findResizeHandle, resizeBounds, findCommand, drawSelection };
+  function drawSelection(context) {
+    const command = commands.value[selectedIndex.value];
+    if (!command || command.type !== "shape" || !["line", "arrow"].includes(command.shape)) return;
+    context.save();
+    selectionHandles(command).forEach((handle) => drawSelectionHandle(context, handle));
+    context.restore();
+  }
+
+  return { commandBounds, geometryBounds, selectionBounds, rotatedSelectionBounds, selectionHandles, findResizeHandle, resizeBounds, findCommand, drawSelection };
 }
