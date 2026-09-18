@@ -77,11 +77,11 @@ export function useSketchTextEditor(options) {
     const point = eventPoint(event);
     const originalBounds = textEditorBounds(command);
     const center = { x: originalBounds.x + originalBounds.width / 2, y: originalBounds.y + originalBounds.height / 2 };
-    transform = { type, handle: handleId ? { id: handleId } : null, start: normalizePoint(point), center, startAngle: Math.atan2(point.y - center.y, point.x - center.x), originalRotation: command.rotation || 0, originalCommand: clone(command), originalBounds, draft: true };
+    transform = { type, handle: handleId ? { id: handleId } : null, pointerId: event.pointerId, captureTarget: event.currentTarget, start: normalizePoint(point), center, startAngle: Math.atan2(point.y - center.y, point.x - center.x), originalRotation: command.rotation || 0, originalCommand: clone(command), originalBounds, draft: true };
     event.currentTarget.setPointerCapture(event.pointerId);
   }
   function moveTextTransform(event) {
-    if (!transform || !textEditor.value) return;
+    if (!transform || event.pointerId !== transform.pointerId || !textEditor.value) return;
     const command = commands.value[textEditor.value.index];
     const point = eventPoint(event);
     if (transform.type === "rotate") {
@@ -98,7 +98,13 @@ export function useSketchTextEditor(options) {
       command.y = transform.originalCommand.y + normalized.y - transform.start.y;
     } else resizeTextCommand(command, point, transform);
     transformMasks(command, transform.originalCommand, transform.originalBounds, textEditorBounds(command));
+    render();
   }
-  function finishTextTransform(event) { if (!transform) return; if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); transform = null; nextTick(() => input.value?.focus()); }
+  function finishTextTransform(event) {
+    if (!transform || event.pointerId !== transform.pointerId) return;
+    if (transform.captureTarget?.hasPointerCapture(transform.pointerId)) transform.captureTarget.releasePointerCapture(transform.pointerId);
+    transform = null;
+    nextTick(() => input.value?.focus());
+  }
   return { textLayout, textEditorBounds, startText, beginTextEdit, commitText, cancelText, resizeTextCommand, startTextTransform, moveTextTransform, finishTextTransform, textEditorPadding: padding };
 }

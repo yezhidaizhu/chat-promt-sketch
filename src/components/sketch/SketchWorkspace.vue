@@ -178,6 +178,7 @@ const textEditorStyle = computed(() => {
     width: `${bounds.width}px`,
     height: `${bounds.height}px`,
     color: command.color,
+    "--canvas-text-color": command.color,
     fontSize: `${displaySize(command)}px`,
     lineHeight: textLineHeight,
     transform: `rotate(${command.rotation || 0}rad)`,
@@ -382,7 +383,6 @@ function drawCommand(context, command, preview = false) {
       return;
     }
     if (command.type === "text") {
-      if (textEditor.value?.index === commands.value.indexOf(command)) return;
       const point = pixelPoint(command);
       const layout = textLayout(command);
       context.fillStyle = command.color;
@@ -602,7 +602,13 @@ function finishStagePointer(event, cancelled = false) {
   finishPointer(event, cancelled);
 }
 
+function finishWindowPointer(event) {
+  finishTextTransform(event);
+  finishStagePointer(event);
+}
+
 function cancelWindowPointer(event) {
+  finishTextTransform(event);
   finishStagePointer(event, true);
 }
 
@@ -830,18 +836,21 @@ watch(activePopover, (active, previous) => {
 watch(textValue, (value) => {
   if (!textEditor.value) return;
   const command = commands.value[textEditor.value.index];
-  if (command) command.text = value;
+  if (command) {
+    command.text = value;
+    render();
+  }
 });
 
 onMounted(() => {
-  window.addEventListener("pointerup", finishStagePointer);
+  window.addEventListener("pointerup", finishWindowPointer);
   window.addEventListener("pointercancel", cancelWindowPointer);
   window.addEventListener("blur", cancelPan);
 });
 
 onBeforeUnmount(() => {
   cancelPan();
-  window.removeEventListener("pointerup", finishStagePointer);
+  window.removeEventListener("pointerup", finishWindowPointer);
   window.removeEventListener("pointercancel", cancelWindowPointer);
   window.removeEventListener("blur", cancelPan);
 });

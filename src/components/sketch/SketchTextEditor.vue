@@ -56,6 +56,6 @@ defineExpose({ focus, focusAtEnd });
 </template>
 
 <style scoped>
-.canvas-text-input { display: block; width: 100%; height: 100%; min-width: 0; padding: 0; overflow: hidden; border: 0; outline: 0; background: transparent; color: inherit; font-family: Inter, sans-serif; font-size: inherit; font-weight: 600; line-height: 1.25; cursor: text; resize: none; user-select: text; white-space: pre-wrap; overflow-wrap: anywhere; }
+.canvas-text-input { display: block; width: 100%; height: 100%; min-width: 0; padding: 0; overflow: hidden; border: 0; outline: 0; background: transparent; color: transparent; caret-color: var(--canvas-text-color); font-family: Inter, sans-serif; font-size: inherit; font-weight: 600; line-height: 1.25; cursor: text; resize: none; user-select: text; white-space: pre-wrap; overflow-wrap: anywhere; }
 .canvas-text-input:focus-visible { outline: 0; }
 </style>
